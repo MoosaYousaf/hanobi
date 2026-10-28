@@ -1,0 +1,37 @@
+{
+  "name": "orbit-code",
+  "version": "0.2.0",
+  "private": true,
+  "description": "A desktop workspace for Claude Code, Codex and Gemini CLI",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test",
+    "package:mac": "electron-builder --mac dmg zip"
+  },
+  "devDependencies": {
+    "electron": "40.3.0",
+    "electron-builder": "26.0.12"
+  },
+  "build": {
+    "appId": "dev.orbitcode.app",
+    "productName": "Orbit Code",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "minimumSystemVersion": "12.0",
+      "extendInfo": {
+        "NSDownloadsFolderUsageDescription": "Orbit Code accesses project folders you choose in Downloads so your coding agent can read and edit their files.",
+        "NSDocumentsFolderUsageDescription": "Orbit Code accesses project folders you choose in Documents so your coding agent can read and edit their files.",
+        "NSDesktopFolderUsageDescription": "Orbit Code accesses project folders you choose on Desktop so your coding agent can read and edit their files."
+      }
+    }
+  }
+}

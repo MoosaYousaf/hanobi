@@ -30,7 +30,7 @@ fs.writeFileSync(path.join(process.env.HANOBI_USER_DATA, 'hanobi-data.json'), JS
     { id: 'm4', at: now, role: 'assistant', connectionId: 'claude-code', model: 'claude-opus-5-5', parts: [
       { type: 'tool', id: 'w', name: 'Write', input: { file_path: path.join(folder, 'report.md'), content: '# Report' }, output: 'File created', status: 'done' },
       fileSeed('out', 'totals.csv', 'region,total\nNorth,12\n'),
-      text('# Quarterly totals\n\n```csv totals.csv\nregion,total\nNorth,12\nSouth,9\n```\n\n```python\nprint("done")\n```\n\n```html\n<p id="out">waiting</p><script>document.getElementById("out").textContent = "ran " + (typeof require) + " " + (typeof window.hanobi)</script>\n```')] }
+      text('# Quarterly totals\n\n```csv totals.csv\nregion,total\nNorth,12\nSouth,9\n```\n\n```python\nprint("done")\n```\n\n```html\n<p id="out">waiting</p><script>document.getElementById("out").textContent = "ran " + (typeof require) + " " + (typeof window.hanobi)</script>\n```\n\n```mermaid\nflowchart LR\n  Plan --> Build --> Ship\n```')] }
   ] }]
 }));
 // The workspace is a Git repository with a GitHub origin. A fake gh answers with one pull request.
@@ -74,7 +74,7 @@ async function shot(win, name) {
   if (!process.env.SMOKE_SHOTS) return;
   for (const theme of ['light', 'dark']) {
     nativeTheme.themeSource = theme;
-    await sleep(250);
+    await sleep(500); // theme-dependent drawings (Mermaid) redraw after a short delay
     fs.writeFileSync(path.join(process.env.SMOKE_SHOTS, `${name}-${theme}.png`), (await win.webContents.capturePage()).toPNG());
   }
   nativeTheme.themeSource = 'system';
@@ -142,10 +142,12 @@ app.whenReady().then(async () => {
     await click(win, '.topbar [title="Changes"]');
     fs.writeFileSync(path.join(folder, 'report.md'), '# Report\n');
     await clickText(win, '.thread-row', 'Quarterly table');
-    await until(win, `[...document.querySelectorAll('.code-lang')].map(e => e.textContent).join() === 'totals.csv,Python,HTML'`, 'code blocks show a file name and a language');
+    await until(win, `[...document.querySelectorAll('.code-lang')].map(e => e.textContent).join() === 'totals.csv,Python,HTML,Mermaid'`, 'code blocks show a file name and a language');
     await until(win, `[...document.querySelectorAll('.file-card .file-name')].map(e => e.textContent).join() === 'brief.txt,report.md,totals.csv'`, 'file cards for an attachment, a written file, and a made file');
     await clickText(win, '.code-btn', 'Preview');
     await until(win, `[...document.querySelectorAll('.snippet-table td')].map(e => e.textContent).join() === 'North,12,South,9'`, 'CSV preview shows a table');
+    await until(win, `(() => { const svg = document.querySelector('.mermaid-svg svg'); return !!svg && ['Plan', 'Build', 'Ship'].every(t => svg.textContent.includes(t)); })()`, 'a Mermaid block opens as a drawn diagram', 15000);
+    await win.webContents.executeJavaScript(`document.querySelector('.mermaid-preview').scrollIntoView({ block: 'center' })`);
     await shot(win, '1d-files');
     // Copy puts the exact snippet on the clipboard (through main) and says so.
     clipboard.writeText('');
@@ -292,7 +294,7 @@ app.whenReady().then(async () => {
     })()`);
     await until(win, `(${JSON.stringify(listed)}).at(-1) === [...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row .thread-title')][0].textContent`, 'dragging a conversation reorders the list');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, elapsed time and background work, themed access and effort pickers, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
+    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, elapsed time and background work, themed access and effort pickers, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, Mermaid diagrams, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
     app.exit(0);
   } catch (error) {
     if (errors.length) console.error('Console errors:\n' + errors.join('\n')); process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }

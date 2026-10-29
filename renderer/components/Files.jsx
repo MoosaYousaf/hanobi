@@ -115,9 +115,9 @@ const EXTENSIONS = {
   javascript: 'js', js: 'js', jsx: 'jsx', typescript: 'ts', ts: 'ts', tsx: 'tsx', python: 'py', py: 'py', bash: 'sh', sh: 'sh', shell: 'sh', zsh: 'sh', console: 'sh',
   json: 'json', jsonl: 'jsonl', html: 'html', css: 'css', scss: 'scss', csv: 'csv', tsv: 'tsv', markdown: 'md', md: 'md', yaml: 'yaml', yml: 'yml', toml: 'toml',
   sql: 'sql', go: 'go', rust: 'rs', rs: 'rs', java: 'java', kotlin: 'kt', swift: 'swift', c: 'c', cpp: 'cpp', 'c++': 'cpp', csharp: 'cs', cs: 'cs', ruby: 'rb', rb: 'rb',
-  php: 'php', xml: 'xml', svg: 'svg', text: 'txt', txt: 'txt', plaintext: 'txt', diff: 'diff', dockerfile: 'Dockerfile', makefile: 'Makefile', lua: 'lua', r: 'r', dart: 'dart'
+  php: 'php', xml: 'xml', svg: 'svg', mermaid: 'mermaid', mmd: 'mermaid', text: 'txt', txt: 'txt', plaintext: 'txt', diff: 'diff', dockerfile: 'Dockerfile', makefile: 'Makefile', lua: 'lua', r: 'r', dart: 'dart'
 };
-export const LABELS = { html: 'HTML', css: 'CSS', json: 'JSON', csv: 'CSV', tsv: 'TSV', sql: 'SQL', svg: 'SVG', xml: 'XML', go: 'Go', js: 'JavaScript', jsx: 'JSX', ts: 'TypeScript', tsx: 'TSX', py: 'Python', sh: 'Shell', md: 'Markdown', rs: 'Rust', rb: 'Ruby', cs: 'C#', cpp: 'C++', kt: 'Kotlin', yml: 'YAML', yaml: 'YAML', txt: 'Text' };
+export const LABELS = { html: 'HTML', css: 'CSS', json: 'JSON', csv: 'CSV', tsv: 'TSV', sql: 'SQL', svg: 'SVG', xml: 'XML', go: 'Go', js: 'JavaScript', jsx: 'JSX', ts: 'TypeScript', tsx: 'TSX', py: 'Python', sh: 'Shell', md: 'Markdown', rs: 'Rust', rb: 'Ruby', cs: 'C#', cpp: 'C++', kt: 'Kotlin', yml: 'YAML', yaml: 'YAML', txt: 'Text', mermaid: 'Mermaid' };
 
 // The file name for a snippet: a name in the fence info (```python app.py or title="app.py"), else snippet.<ext>.
 export function snippetName(language, meta = '') {
@@ -147,6 +147,7 @@ export function SnippetPreview({ kind, text }) {
   // Scripts stay off here, inside Hanobi's window. Run opens the page with scripts in its own window.
   if (kind === 'html') return <iframe className="snippet-frame" sandbox="" srcDoc={text} title="HTML preview" />;
   if (kind === 'svg') return <div className="snippet-image"><img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`} alt="SVG preview" /></div>;
+  if (kind === 'mermaid') return <MermaidPreview text={text} />;
   if (kind === 'md') return <div className="prose snippet-prose"><Markdown remarkPlugins={plugins}>{text}</Markdown></div>;
   const rows = parseTable(text.trim(), kind === 'tsv' ? '\t' : ',').slice(0, 201);
   const [head, ...body] = rows;
@@ -158,4 +159,37 @@ export function SnippetPreview({ kind, text }) {
   );
 }
 
-export const previewKind = name => ({ html: 'html', htm: 'html', svg: 'svg', md: 'md', csv: 'csv', tsv: 'tsv' })[ext(name)] || null;
+// Mermaid diagrams render in Hanobi's own page with mermaid's strict mode (no scripts, no click handlers, sanitized
+// labels). The library loads on the first diagram, so it does not weigh on startup. While a reply streams, the last
+// diagram that parsed stays on screen.
+const darkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+let mermaidLoad = null, mermaidCount = 0;
+function MermaidPreview({ text }) {
+  const [svg, setSvg] = useState('');
+  const [error, setError] = useState('');
+  const [dark, setDark] = useState(darkScheme.matches);
+  useEffect(() => { const on = e => setDark(e.matches); darkScheme.addEventListener('change', on); return () => darkScheme.removeEventListener('change', on); }, []);
+  useEffect(() => {
+    let live = true;
+    const timer = setTimeout(async () => {
+      try {
+        const mermaid = (await (mermaidLoad ||= import('mermaid'))).default;
+        // Colors come from the app theme, so diagrams match every palette in light and dark.
+        const css = getComputedStyle(document.documentElement), v = name => css.getPropertyValue(name).trim();
+        mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', darkMode: dark, fontFamily: getComputedStyle(document.body).fontFamily,
+          themeVariables: { background: v('--surface'), primaryColor: v('--raised'), primaryTextColor: v('--text'), primaryBorderColor: v('--border-strong'), secondaryColor: v('--user'), tertiaryColor: v('--surface'), lineColor: v('--text-3'), textColor: v('--text'), mainBkg: v('--raised'), nodeBorder: v('--border-strong'), clusterBkg: v('--surface'), edgeLabelBackground: v('--surface') } });
+        const { svg } = await mermaid.render(`hanobi-mermaid-${++mermaidCount}`, text);
+        if (live) { setSvg(svg); setError(''); }
+      } catch (e) { if (live) setError(String(e?.message || e).split('\n')[0]); }
+    }, 200);
+    return () => { live = false; clearTimeout(timer); };
+  }, [text, dark]);
+  return (
+    <div className="snippet-image mermaid-preview">
+      {svg ? <div className="mermaid-svg" dangerouslySetInnerHTML={{ __html: svg }} /> : null}
+      {error && !svg ? <div className="muted pad">This diagram does not parse: {error}</div> : !svg ? <div className="muted pad">Drawing the diagram…</div> : null}
+    </div>
+  );
+}
+
+export const previewKind = name => ({ html: 'html', htm: 'html', svg: 'svg', md: 'md', csv: 'csv', tsv: 'tsv', mermaid: 'mermaid', mmd: 'mermaid' })[ext(name)] || null;

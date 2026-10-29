@@ -18,7 +18,8 @@ function CodeBlock({ node, children, ...props }) {
   const text = hastText(code).replace(/\n$/, '');
   const kind = previewKind(name);
   const [copied, setCopied] = useState(false);
-  const [preview, setPreview] = useState(false);
+  // Diagrams open drawn, as in Claude; other previews open on request.
+  const [preview, setPreview] = useState(kind === 'mermaid');
   const copy = async () => { if (await copyText(text, 'Code')) { setCopied(true); setTimeout(() => setCopied(false), 1400); } };
   const named = !name.startsWith('snippet.');
   const extension = name.split('.').pop();

@@ -24,6 +24,7 @@ electron/main.js
   ├─ git.js            async git with porcelain v2 -z, run from the repository root; branches, push, pull; checkpoints through a private index
   ├─ github.js         pull requests through the gh CLI (view, list, create with the body on stdin, checkout); no token in Hanobi
   ├─ projects.js       project folders: instructions files, knowledge/ documents, API context
+  ├─ files.js          conversation files: attachments (Files/<thread>/in), model files (out), HTML to docx/rtf/odt/pdf, path checks
   ├─ extract.js        document text (PDF, Word, RTF, ODT, PowerPoint, Excel) with macOS tools, cached in knowledge/.text/
   ├─ suggest.js        suggested-replies prompt and parsing
   └─ skills.js         read-only skill discovery
@@ -64,3 +65,8 @@ Before each run in a code workspace, `git.snapshot` copies the real index (with 
 ## Context usage
 
 Each saved assistant message can carry `usage: { used, window }`: the tokens of the last model call in the turn (input, cache, and output) and the context size. Claude Code reports both in its stream (`assistant` message usage, `result.modelUsage[].contextWindow`). Anthropic and OpenAI-compatible APIs report `used` (OpenAI-compatible servers get `stream_options.include_usage`, except Mistral). Codex and Copilot do not stream usage; after the turn `usage.js` reads the last `token_count` event of the Codex rollout file or the last `session.usage_record` of the Copilot session log. When the provider gives no size, the runner uses the Claude table in `usage.js`. The composer shows the last message's usage as a ring.
+
+## Files
+
+`electron/files.js` keeps each conversation's files under `<userData>/Files/<thread id>/`. Attachments are copied to `in/<uuid>/`, so a moved original does not break the chat. Files that API models make with `hanobi__write_file` go to `out/`. A file part is `{ type: 'file', name, path, size, mediaType }`; user messages hold attachments and replies hold made files. The renderer shows cards for file parts and for paths that CLI tools wrote (`Write`, `Edit`, Codex file changes, Copilot `create`/`edit`). Every file action goes through `Files.resolve`, which accepts only real paths inside the thread's folder or its workspace (symbolic links are resolved first). Attachment text comes from `extract.js` and goes into prompts as `<attachment>` blocks: through the transcript for API models, and in the stdin prompt with paths for CLI agents. Word, RTF, and OpenDocument output come from HTML through `textutil`; PDF output comes from Chromium's printer in a hidden window with scripts off.
+

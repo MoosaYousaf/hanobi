@@ -22,9 +22,9 @@ async function listModels(baseURL, apiKey, modelsURL) {
   return models.sort((a, b) => a.id.localeCompare(b.id));
 }
 
-async function run({ thread, baseURL, history, apiKey, system, tools, callTool, draft, signal }) {
+async function run({ thread, baseURL, history, attachments, apiKey, system, tools, callTool, draft, signal }) {
   const api = client(baseURL, apiKey);
-  const messages = toProvider(history, 'openai');
+  const messages = toProvider(history, 'openai', attachments);
   const start = messages.length;
   const definitions = tools.map(t => ({ type: 'function', function: { name: t.qualified, description: `${t.description}\n(From the ${t.server} connector.)`.trim(), parameters: t.inputSchema } }));
 

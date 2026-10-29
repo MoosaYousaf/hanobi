@@ -1,20 +1,37 @@
 import { memo, useState, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ChevronRight, Check, Copy, Wrench, CircleAlert, Ban, Clock, GitBranch, RotateCcw, Pencil } from 'lucide-react';
+import { ChevronRight, Check, Copy, Wrench, CircleAlert, Ban, Clock, GitBranch, RotateCcw, Pencil, Download, Eye, Code } from 'lucide-react';
 import { Working } from './Spark.jsx';
+import { FileCard, ToolFiles, ExportMenu, exportText, markdownHtml, snippetName, previewKind, SnippetPreview, LABELS } from './Files.jsx';
 import { useStore, answerApproval, answerQuestion, guard } from '../store.js';
 
 const plugins = [remarkGfm];
 
-function CodeBlock({ children, ...props }) {
-  const ref = useRef(null);
+// A fenced code block with its own bar: the language or file name, Preview for HTML, SVG, Markdown, and CSV,
+// Download as a file, and Copy. The text comes from the Markdown tree, so it is exact.
+const hastText = node => (node?.type === 'text' ? node.value : (node?.children || []).map(hastText).join(''));
+function CodeBlock({ node, children, ...props }) {
+  const code = node?.children?.find(c => c.tagName === 'code');
+  const language = [].concat(code?.properties?.className || []).find(c => String(c).startsWith('language-'))?.slice(9) || '';
+  const name = snippetName(language, code?.data?.meta || '');
+  const text = hastText(code).replace(/\n$/, '');
+  const kind = previewKind(name);
   const [copied, setCopied] = useState(false);
-  const copy = () => { navigator.clipboard.writeText(ref.current?.innerText || ''); setCopied(true); setTimeout(() => setCopied(false), 1400); };
+  const [preview, setPreview] = useState(false);
+  const copy = () => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1400); };
+  const named = !name.startsWith('snippet.');
+  const extension = name.split('.').pop();
+  const download = () => exportText({ name, text, html: kind === 'md' ? markdownHtml(text) : kind === 'html' ? text : '' });
   return (
     <div className="code-block">
-      <button className="code-copy tip tip-end" onClick={copy} aria-label="Copy code" data-tip={copied ? 'Copied' : 'Copy code'}>{copied ? <Check size={13} /> : <Copy size={13} />}</button>
-      <pre ref={ref} {...props}>{children}</pre>
+      <div className="code-bar">
+        <span className="code-lang">{named ? name : LABELS[extension] || language || 'Text'}</span>
+        {kind ? <button className={`code-btn ${preview ? 'on' : ''}`} onClick={() => setPreview(!preview)} aria-pressed={preview}>{preview ? <><Code size={13} /> Code</> : <><Eye size={13} /> Preview</>}</button> : null}
+        <button className="code-btn tip tip-end" onClick={download} aria-label={`Download ${name}`} data-tip={`Download ${name}`}><Download size={13} /></button>
+        <button className="code-btn tip tip-end" onClick={copy} aria-label="Copy code" data-tip={copied ? 'Copied' : 'Copy code'}>{copied ? <Check size={13} /> : <Copy size={13} />}</button>
+      </div>
+      {preview ? <SnippetPreview kind={kind} text={text} /> : <pre {...props}>{children}</pre>}
     </div>
   );
 }
@@ -38,11 +55,11 @@ const show = value => (typeof value === 'string' ? value : JSON.stringify(value,
 const statusIcon = { running: null, pending: <Clock size={13} />, done: <Check size={13} />, error: <CircleAlert size={13} />, denied: <Ban size={13} /> };
 const statusLabel = { running: 'Running', pending: 'Waiting for approval', done: 'Done', error: 'Failed', denied: 'Declined' };
 
-function ToolCall({ part }) {
+function ToolCall({ part, live }) {
   const [open, setOpen] = useState(false);
   const input = part.input && Object.keys(part.input).length !== 0 ? show(part.input) : '';
   const preview = typeof part.input === 'string' ? part.input : part.input?.command || part.input?.query || part.input?.path || part.input?.file_path || '';
-  return (
+  return <>
     <div className={`tool tool-${part.status}`}>
       <button className="tool-head" onClick={() => setOpen(!open)}>
         <ChevronRight size={13} className="chev" />
@@ -58,7 +75,8 @@ function ToolCall({ part }) {
         </div>
       ) : null}
     </div>
-  );
+    {!live ? <ToolFiles part={part} /> : null}
+  </>;
 }
 
 function Approval({ request }) {
@@ -117,7 +135,8 @@ function Parts({ parts, live }) {
   return parts.map((part, i) => {
     if (part.type === 'text') return part.text ? <Prose key={i} text={part.text} /> : null;
     if (part.type === 'thinking') return <Thinking key={i} text={part.text} live={live && i === parts.length - 1} />;
-    if (part.type === 'tool') return <ToolCall key={part.id || i} part={part} />;
+    if (part.type === 'tool') return <ToolCall key={part.id || i} part={part} live={live} />;
+    if (part.type === 'file') return <FileCard key={part.path} file={part} />;
     if (part.type === 'image') return <img key={i} className="msg-image" src={`data:${part.mediaType};base64,${part.data}`} alt={part.name || 'Attached image'} />;
     return null;
   });
@@ -142,6 +161,14 @@ const textOf = message => message.parts.filter(p => p.type === 'text').map(p => 
 // An icon button whose name shows in a tooltip on hover.
 function Action({ label, onClick, children, pressed }) {
   return <button className="msg-action tip" aria-label={label} data-tip={label} aria-pressed={pressed} onClick={onClick}>{children}</button>;
+}
+
+function DownloadAction({ message }) {
+  const [anchor, setAnchor] = useState(null);
+  return <>
+    <Action label="Download" pressed={!!anchor} onClick={e => setAnchor(e.currentTarget.getBoundingClientRect())}><Download size={14} /></Action>
+    {anchor ? <ExportMenu text={textOf(message)} anchor={anchor} onClose={() => setAnchor(null)} /> : null}
+  </>;
 }
 
 function CopyAction({ message }) {
@@ -191,7 +218,7 @@ export const Message = memo(function Message({ message, modelLabel, onBranch, on
       <Parts parts={message.parts} />
       {message.error ? <div className="msg-error"><CircleAlert size={14} /> {message.error}</div> : null}
       {!message.parts.length && !message.error ? <div className="muted">No response.</div> : null}
-      {textOf(message) ? <div className="msg-actions start"><CopyAction message={message} /></div> : null}
+      {textOf(message) ? <div className="msg-actions start"><CopyAction message={message} /><DownloadAction message={message} /></div> : null}
     </article>
   );
 });

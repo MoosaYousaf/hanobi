@@ -15,9 +15,9 @@ async function listModels(apiKey) {
   return models;
 }
 
-async function run({ thread, history, apiKey, system, tools, callTool, draft, signal }) {
+async function run({ thread, history, attachments, apiKey, system, tools, callTool, draft, signal }) {
   const api = client(apiKey);
-  const messages = toProvider(history, 'anthropic');
+  const messages = toProvider(history, 'anthropic', attachments);
   const start = messages.length;
   const definitions = tools.map(t => ({ name: t.qualified, description: `${t.description}\n(From the ${t.server} connector.)`.trim(), input_schema: t.inputSchema, eager_input_streaming: true }));
   const fallback = fallbackModels.test(thread.model);

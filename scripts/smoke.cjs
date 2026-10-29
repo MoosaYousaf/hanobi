@@ -8,6 +8,13 @@ process.env.HANOBI_USER_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'hanobi-smo
 const folder = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'hanobi-project-')));
 const now = Date.now();
 const text = t => ({ type: 'text', text: t });
+// A file part whose file exists in the thread's folder, the way files:attach and write_file leave it.
+const fileSeed = (kind, name, body) => {
+  const dir = path.join(process.env.HANOBI_USER_DATA, 'Files', 't2', kind);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, name), body);
+  return { type: 'file', name, path: path.join(dir, name), size: Buffer.byteLength(body), mediaType: name.endsWith('.csv') ? 'text/csv' : 'text/plain' };
+};
 fs.writeFileSync(path.join(process.env.HANOBI_USER_DATA, 'hanobi-data.json'), JSON.stringify({
   version: 2, workspaces: [{ id: 'w1', name: 'hanobi', path: folder }], connections: [],
   mcpServers: [{ id: 'notes', name: 'Notes', transport: 'stdio', command: 'node', args: [path.join(__dirname, '../test/fixtures/notes-server.cjs')], url: '', oauth: false, enabled: false }], modelCache: {}, preferences: { theme: 'system', systemPrompt: '', lastModel: null },
@@ -18,6 +25,12 @@ fs.writeFileSync(path.join(process.env.HANOBI_USER_DATA, 'hanobi-data.json'), JS
       { type: 'tool', id: 'a', name: 'Read', input: { file_path: 'CHANGELOG.md' }, output: '## 2.0.0\n- Removed the legacy API', status: 'done' },
       { type: 'tool', id: 'b', name: 'Bash', input: { command: 'git log --oneline -5' }, output: 'fatal: not a git repository', status: 'error' },
       text('There are **two** breaking changes in `2.0.0`:\n\n1. The legacy API is removed.\n2. Config moved to `hanobi.json`.\n\n```js\nconst config = require(\'./hanobi.json\');\n```\n\n| Version | Change |\n| --- | --- |\n| 2.0.0 | Legacy API removed |')] }
+  ] }, { id: 't2', workspaceId: 'w1', title: 'Quarterly table', connectionId: 'claude-code', model: 'claude-opus-5-5', effort: 'high', mode: 'auto', sessionId: null, replay: false, createdAt: now - 60000, updatedAt: now - 60000, messages: [
+    { id: 'm3', at: now, role: 'user', parts: [fileSeed('in', 'brief.txt', 'Q3 figures'), text('Make a table of the totals.')] },
+    { id: 'm4', at: now, role: 'assistant', connectionId: 'claude-code', model: 'claude-opus-5-5', parts: [
+      { type: 'tool', id: 'w', name: 'Write', input: { file_path: path.join(folder, 'report.md'), content: '# Report' }, output: 'File created', status: 'done' },
+      fileSeed('out', 'totals.csv', 'region,total\nNorth,12\n'),
+      text('# Quarterly totals\n\n```csv totals.csv\nregion,total\nNorth,12\nSouth,9\n```\n\n```python\nprint("done")\n```')] }
   ] }]
 }));
 // The workspace is a Git repository with a GitHub origin. A fake gh answers with one pull request.
@@ -32,7 +45,10 @@ fs.copyFileSync(path.join(__dirname, '../test/fixtures/fake-gh.cjs'), path.join(
 process.env.PATH = `${ghBin}${path.delimiter}${process.env.PATH}`;
 process.env.FAKE_GH_LOG = path.join(ghBin, 'log'); process.env.FAKE_GH_STATE = path.join(ghBin, 'state.json');
 fs.writeFileSync(process.env.FAKE_GH_STATE, JSON.stringify({ pr: { number: 12, title: 'Parse breaking changes from the changelog', url: 'https://github.com/example/hanobi/pull/12', state: 'OPEN', isDraft: false, reviewDecision: 'CHANGES_REQUESTED', headRefName: 'feature/parser', baseRefName: 'main', author: { login: 'me' }, updatedAt: '2026-10-29T00:00:00Z' } }));
-const { app, BrowserWindow, nativeTheme } = require('electron');
+const { app, BrowserWindow, nativeTheme, dialog } = require('electron');
+// Save dialogs answer with a fixed path, so downloads run without a person.
+let saveTarget = null;
+dialog.showSaveDialog = async () => ({ canceled: !saveTarget, filePath: saveTarget });
 require('../electron/main.js');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -41,8 +57,9 @@ async function until(win, script, label, timeout = 5000) {
   while (Date.now() < end) { if (await win.webContents.executeJavaScript(script)) return; await sleep(100); }
   throw new Error(`Timed out: ${label}`);
 }
-const click = (win, selector) => win.webContents.executeJavaScript(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('Missing ${selector}'); el.click(); })()`);
-const clickText = (win, selector, text) => win.webContents.executeJavaScript(`(() => { const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find(e => e.textContent.includes(${JSON.stringify(text)})); if (!el) throw new Error('Missing ${text}'); el.click(); })()`);
+// Errors thrown in the page lose their message, so a missing element is reported from here.
+const click = async (win, selector) => { if (!await win.webContents.executeJavaScript(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; el.click(); return true; })()`)) throw new Error(`Missing ${selector}`); };
+const clickText = async (win, selector, text) => { if (!await win.webContents.executeJavaScript(`(() => { const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find(e => e.textContent.includes(${JSON.stringify(text)})); if (!el) return false; el.click(); return true; })()`)) throw new Error(`Missing ${text} in ${selector}`); };
 async function shot(win, name) {
   if (!process.env.SMOKE_SHOTS) return;
   for (const theme of ['light', 'dark']) {
@@ -53,12 +70,12 @@ async function shot(win, name) {
   nativeTheme.themeSource = 'system';
 }
 
+const errors = [];
 app.whenReady().then(async () => {
   try {
     await sleep(300);
     const win = BrowserWindow.getAllWindows()[0];
     if (win.webContents.isLoading()) await new Promise(r => win.webContents.once('did-finish-load', r));
-    const errors = [];
     win.webContents.on('console-message', (_e, level, message) => { if (level >= 3) errors.push(message); });
     await until(win, `!!document.querySelector('.sidebar .ws-name')`, 'sidebar renders');
     await shot(win, '1-home');
@@ -88,6 +105,27 @@ app.whenReady().then(async () => {
     await until(win, `[...document.querySelectorAll('.menu-item')].some(b => b.textContent === 'New branch…') && [...document.querySelectorAll('.menu-item')].some(b => b.textContent === 'feature/parser' && b.disabled)`, 'branch menu lists branches');
     await win.webContents.executeJavaScript(`document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
     await click(win, '.topbar [title="Changes"]');
+    fs.writeFileSync(path.join(folder, 'report.md'), '# Report\n');
+    await clickText(win, '.thread-row', 'Quarterly table');
+    await until(win, `[...document.querySelectorAll('.code-lang')].map(e => e.textContent).join() === 'totals.csv,Python'`, 'code blocks show a file name and a language');
+    await until(win, `[...document.querySelectorAll('.file-card .file-name')].map(e => e.textContent).join() === 'brief.txt,report.md,totals.csv'`, 'file cards for an attachment, a written file, and a made file');
+    await clickText(win, '.code-btn', 'Preview');
+    await until(win, `[...document.querySelectorAll('.snippet-table td')].map(e => e.textContent).join() === 'North,12,South,9'`, 'CSV preview shows a table');
+    await shot(win, '1d-files');
+    for (const extension of ['pdf', 'docx']) {
+      saveTarget = path.join(ghBin, `reply.${extension}`);
+      await click(win, '.msg.assistant .msg-actions [data-tip="Download"]');
+      await until(win, `[...document.querySelectorAll('.menu-item')].some(b => b.textContent.includes('(.${extension})'))`, 'reply download menu');
+      await clickText(win, '.menu-item', `(.${extension})`);
+      const end = Date.now() + 10000;
+      while (!fs.existsSync(saveTarget) && Date.now() < end) await sleep(100);
+      if (!fs.existsSync(saveTarget)) throw new Error(`Timed out: reply saves as ${extension}`);
+    }
+    await sleep(300);
+    if (!fs.readFileSync(path.join(ghBin, 'reply.pdf')).subarray(0, 5).equals(Buffer.from('%PDF-'))) throw new Error('reply.pdf is not a PDF');
+    if (!/Quarterly totals[\s\S]*North/.test(execFileSync('textutil', ['-convert', 'txt', '-stdout', path.join(ghBin, 'reply.docx')], { encoding: 'utf8' }))) throw new Error('reply.docx text is wrong');
+    saveTarget = null;
+    await clickText(win, '.thread-row', 'Parse the release notes');
     await click(win, '.new-chat');
     await until(win, `!!document.querySelector('.composer textarea')`, 'composer renders');
     await click(win, '.chip');
@@ -183,7 +221,8 @@ app.whenReady().then(async () => {
     })()`);
     await until(win, `(${JSON.stringify(listed)}).at(-1) === [...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row .thread-title')][0].textContent`, 'dragging a conversation reorders the list');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests.\n');
+    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar and preview, file cards, reply export to PDF and Word.\n');
     app.exit(0);
-  } catch (error) { process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }
+  } catch (error) {
+    if (errors.length) console.error('Console errors:\n' + errors.join('\n')); process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }
 });

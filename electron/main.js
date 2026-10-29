@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, safeStorage, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, safeStorage, nativeTheme, clipboard, nativeImage } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -14,13 +14,14 @@ const PALETTES = ['hanobi', 'gemini', 'chatgpt', 'deepseek', 'custom'];
 const { cliPath } = require('./providers/cli');
 const git = require('./git');
 const github = require('./github');
+const { Files, safeName, mediaType } = require('./files');
 const { skills } = require('./skills');
 
 app.setName('Hanobi');
 // Tests and smoke runs use a throwaway data folder.
 if (process.env.HANOBI_USER_DATA) app.setPath('userData', process.env.HANOBI_USER_DATA);
 const windows = new Set();
-let store, secrets, mcp, runner;
+let store, secrets, mcp, runner, files;
 
 function send(channel, value) { for (const win of windows) if (!win.isDestroyed()) win.webContents.send(channel, value); }
 const changed = () => send('changed');
@@ -78,6 +79,22 @@ function mcpRecord(input, existing = {}) {
   if (transport === 'stdio' && !String(input.command || '').trim()) throw new Error('Enter the command that starts the server.');
   if (transport === 'http' && !/^https?:\/\//.test(String(input.url || ''))) throw new Error('Enter an http or https URL.');
   return { id: existing.id || crypto.randomUUID(), name, transport, command: String(input.command || '').trim(), args: (input.args || []).map(a => String(a).replace(/^~(?=\/|$)/, os.homedir())), url: String(input.url || '').trim(), oauth: transport === 'http' && !!input.oauth, enabled: input.enabled ?? existing.enabled ?? !(transport === 'http' && input.oauth) };
+}
+
+const TEXT_COPY = /\.(txt|md|markdown|csv|tsv|json|jsonl|ya?ml|toml|xml|svg|html?|css|js|jsx|ts|tsx|py|rb|go|rs|java|kt|swift|c|h|cc|cpp|hpp|cs|php|sh|sql|ini|cfg|log|tex|rst|org)$/i;
+// The window for dialogs and Quick Look; a click can arrive while no window has focus.
+const activeWindow = () => BrowserWindow.getFocusedWindow() || [...windows].find(w => !w.isDestroyed());
+const threadFile = (threadId, file) => { const thread = store.thread(threadId); return files.resolve(thread.id, store.workspace(thread.workspaceId).path, file); };
+
+// HTML to PDF with Chromium's printer, in a hidden window with scripts off.
+async function printPdf(html) {
+  const source = path.join(app.getPath('temp'), `hanobi-print-${crypto.randomUUID()}.html`);
+  fs.writeFileSync(source, html);
+  const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false, contextIsolation: true } });
+  try {
+    await win.loadFile(source);
+    return await win.webContents.printToPDF({ printBackground: true, margins: { top: 0.6, bottom: 0.6, left: 0.6, right: 0.6 } });
+  } finally { win.destroy(); fs.rmSync(source, { force: true }); }
 }
 
 const handlers = {
@@ -146,7 +163,7 @@ const handlers = {
     changed(); send('thread-changed', { threadId: id });
   },
   'thread:rename': (id, title) => { store.update(id, { title: String(title).trim().slice(0, 100) || 'Conversation' }); changed(); },
-  'thread:delete': id => { if (runner.runs.has(id)) throw new Error('Stop the reply first.'); store.removeThread(id); changed(); },
+  'thread:delete': id => { if (runner.runs.has(id)) throw new Error('Stop the reply first.'); store.removeThread(id); files.remove(id).catch(() => {}); changed(); },
   'thread:rewind': async (id, messageId, options) => { const result = await runner.rewind(id, messageId, options); changed(); send('thread-changed', { threadId: id }); if (options?.code) send('git-changed', store.thread(id).workspaceId); return result; },
   'thread:fork': (id, messageId) => { const branch = store.fork(id, messageId); changed(); return branch.id; },
   'thread:settings': (id, next) => { runner.setThreadSettings(id, next); changed(); send('thread-changed', { threadId: id }); },
@@ -219,6 +236,46 @@ const handlers = {
   'github:checkout': async (id, number) => { await github.checkout(store.workspace(id).path, number); send('git-changed', id); },
   'github:open': url => { if (!/^https:\/\/github\.com\//.test(url)) throw new Error('Not a GitHub link.'); return shell.openExternal(url); },
   'git:remote': async id => { const { remote } = await git.status(store.workspace(id).path); if (!remote) throw new Error('No GitHub origin remote found.'); return shell.openExternal(remote); },
+  // Files in conversations. A path is checked against the thread's folder and its workspace before any action.
+  'files:pick': async threadId => {
+    const picked = await dialog.showOpenDialog(activeWindow(), { properties: ['openFile', 'multiSelections'] });
+    return picked.canceled ? [] : files.attach(store.thread(threadId).id, picked.filePaths);
+  },
+  'files:attach': (threadId, paths) => files.attach(store.thread(threadId).id, (Array.isArray(paths) ? paths : []).filter(p => typeof p === 'string' && path.isAbsolute(p))),
+  'files:attach-data': (threadId, file) => files.attachData(store.thread(threadId).id, file || {}),
+  'files:info': async (threadId, list) => {
+    const thread = store.thread(threadId), root = store.workspace(thread.workspaceId).path;
+    return Promise.all((Array.isArray(list) ? list : []).slice(0, 50).map(file => files.resolve(thread.id, root, file).then(full => files.part(full), () => null)));
+  },
+  'files:preview': async (threadId, file) => {
+    const full = await threadFile(threadId, file);
+    activeWindow()?.previewFile(full, path.basename(full));
+  },
+  'files:open': async (threadId, file) => { const error = await shell.openPath(await threadFile(threadId, file)); if (error) throw new Error(error); },
+  'files:reveal': async (threadId, file) => shell.showItemInFolder(await threadFile(threadId, file)),
+  'files:save-copy': async (threadId, file) => {
+    const full = await threadFile(threadId, file);
+    const target = await dialog.showSaveDialog(activeWindow(), { defaultPath: path.join(app.getPath('downloads'), path.basename(full)) });
+    if (target.canceled || !target.filePath) return null;
+    fs.copyFileSync(full, target.filePath);
+    return target.filePath;
+  },
+  // Text files copy as text, images as images, and other files as a file that Finder and other apps can paste.
+  'files:copy': async (threadId, file) => {
+    const full = await threadFile(threadId, file);
+    if (/^image\/(png|jpeg|gif|webp)$/.test(mediaType(full))) return clipboard.writeImage(nativeImage.createFromPath(full));
+    if (TEXT_COPY.test(full) && fs.statSync(full).size < 2 * 1024 * 1024) return clipboard.writeText(fs.readFileSync(full, 'utf8'));
+    const xml = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+    clipboard.clear();
+    clipboard.writeBuffer('NSFilenamesPboardType', Buffer.from(`<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><array><string>${xml(full)}</string></array></plist>`));
+  },
+  // Saves text the renderer has (a code snippet or a whole reply) as a file. format: text, html, docx, rtf, odt, or pdf.
+  'files:export': async ({ name, text = '', html = '' }) => {
+    const target = await dialog.showSaveDialog(activeWindow(), { defaultPath: path.join(app.getPath('downloads'), safeName(name)) });
+    if (target.canceled || !target.filePath) return null;
+    await files.render(target.filePath, /\.(docx|rtf|odt|pdf|html?)$/i.test(target.filePath) && html ? html : text);
+    return target.filePath;
+  },
   'open:external': url => { if (/^https:\/\//.test(url)) return shell.openExternal(url); },
   'window:new': () => { createWindow(); },
   'window:fullscreen': on => { const win = BrowserWindow.getFocusedWindow(); if (win && win.isFullScreen() !== !!on) win.setFullScreen(!!on); }
@@ -228,7 +285,8 @@ app.whenReady().then(() => {
   store = new Store(dataFile());
   secrets = new Secrets(path.join(app.getPath('userData'), 'hanobi-secrets.json'), safeStorage);
   mcp = new Mcp({ store, secrets, openExternal: url => shell.openExternal(url), onChange: changed });
-  runner = new Runner({ store, secrets, mcp, send });
+  files = new Files(path.join(app.getPath('userData'), 'Files'), { printPdf });
+  runner = new Runner({ store, secrets, mcp, send, files });
   nativeTheme.themeSource = ['light', 'dark'].includes(store.data.preferences.theme) ? store.data.preferences.theme : 'system';
   // A general folder for chats that do not belong to a project.
   const general = path.join(app.getPath('userData'), 'Chats');

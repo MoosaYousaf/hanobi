@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, Square, Plus, X } from 'lucide-react';
 import { useStore, call, guard, toast, askConfirm } from '../store.js';
 import { ModelPicker } from './ModelPicker.jsx';
+import { formatSize } from './Files.jsx';
 
-const MAX_IMAGE = 5 * 1024 * 1024;
-const readImage = file => new Promise((resolve, reject) => {
-  if (!file.type.startsWith('image/')) return reject(new Error(`${file.name} is not an image.`));
-  if (file.size > MAX_IMAGE) return reject(new Error(`${file.name} is larger than 5 MB.`));
+const MAX_IMAGE = 5 * 1024 * 1024; // the API limit for one image
+const MAX_FILES = 10;
+const readData = file => new Promise((resolve, reject) => {
   const reader = new FileReader();
-  reader.onload = () => resolve({ name: file.name, mediaType: file.type, data: String(reader.result).split(',')[1] });
+  reader.onload = () => resolve({ name: file.name || 'Pasted file', data: String(reader.result).split(',')[1] || '' });
   reader.onerror = () => reject(reader.error);
   reader.readAsDataURL(file);
 });
@@ -43,7 +43,7 @@ export function Composer({ thread, workspace, modelLabel }) {
   const running = useStore(s => !!s.live[thread.id]);
   const app = useStore(s => s.app);
   const [text, setText] = useState(() => drafts.get(thread.id) ?? '');
-  const [images, setImages] = useState([]);
+  const [files, setFiles] = useState([]); // file parts already copied into the thread's folder
   const input = useRef(null);
   const connection = app.connections.find(c => c.id === thread.connectionId);
   const preset = connection && app.presets[connection.preset];
@@ -59,15 +59,20 @@ export function Composer({ thread, workspace, modelLabel }) {
     window.addEventListener('hanobi-draft', onDraft);
     return () => window.removeEventListener('hanobi-draft', onDraft);
   }, [thread.id]);
-  const attach = guard(async files => {
-    if (isCli) throw new Error('Images work with API and local models. CLI agents read files from the workspace instead.');
-    const added = await Promise.all([...files].map(readImage));
-    setImages(list => [...list, ...added].slice(0, 8));
+  // Any file type. Main copies it into the thread's folder; a pasted file without a path is sent as bytes.
+  const add = parts => setFiles(list => [...list, ...parts].slice(0, MAX_FILES));
+  const attach = guard(async list => {
+    for (const file of [...list]) {
+      if (!isCli && file.type?.startsWith('image/') && file.size > MAX_IMAGE) throw new Error(`${file.name} is larger than 5 MB, the image limit for API models.`);
+      const source = window.hanobi.pathFor?.(file);
+      add(source ? await call('files:attach', thread.id, [source]) : [await call('files:attach-data', thread.id, await readData(file))]);
+    }
   });
+  const pick = guard(async () => add(await call('files:pick', thread.id)));
   const send = guard(async () => {
-    if (running || (!text.trim() && !images.length)) return;
-    await call('run:send', thread.id, { text, images });
-    update(''); setImages([]);
+    if (running || (!text.trim() && !files.length)) return;
+    await call('run:send', thread.id, { text, files: files.map(({ path, name }) => ({ path, name })) });
+    update(''); setFiles([]);
   });
   const setting = patch => guard(() => call('thread:settings', thread.id, patch))();
   const onAccess = async id => {
@@ -78,10 +83,13 @@ export function Composer({ thread, workspace, modelLabel }) {
   return (
     <div className="composer-wrap">
       <div className="composer" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); attach(e.dataTransfer.files); }}>
-        {images.length ? (
+        {files.length ? (
           <div className="attachments">
-            {images.map((img, i) => (
-              <div key={i} className="thumb"><img src={`data:${img.mediaType};base64,${img.data}`} alt={img.name} /><button className="thumb-x" title="Remove" onClick={() => setImages(images.filter((_, j) => j !== i))}><X size={11} /></button></div>
+            {files.map((f, i) => (
+              <div key={f.path} className="attach-chip" title={f.name}>
+                <span className="attach-name">{f.name}</span><span className="attach-size">{formatSize(f.size)}</span>
+                <button className="thumb-x" title="Remove" aria-label={`Remove ${f.name}`} onClick={() => setFiles(files.filter((_, j) => j !== i))}><X size={11} /></button>
+              </div>
             ))}
           </div>
         ) : null}
@@ -93,13 +101,10 @@ export function Composer({ thread, workspace, modelLabel }) {
         />
         {running
           ? <button className="send stop" title="Stop" onClick={guard(() => call('run:stop', thread.id))}><Square size={11} fill="currentColor" /></button>
-          : <button className="send" title="Send (Enter)" disabled={!text.trim() && !images.length} onClick={send}><ArrowUp size={15} strokeWidth={2.4} /></button>}
+          : <button className="send" title="Send (Enter)" disabled={!text.trim() && !files.length} onClick={send}><ArrowUp size={15} strokeWidth={2.4} /></button>}
       </div>
       <div className="composer-row">
-        <label className="icon-btn" title={isCli ? 'Images need an API or local model' : 'Attach images'}>
-          <Plus size={16} />
-          <input type="file" accept="image/*" multiple hidden onChange={e => { attach(e.target.files); e.target.value = ''; }} />
-        </label>
+        <button className="icon-btn tip" data-tip="Attach files" aria-label="Attach files" onClick={pick}><Plus size={16} /></button>
         {!chatCli ? (
           <select className={`mini-select ${mode.danger ? 'danger' : ''}`} value={mode.id} disabled={running} onChange={e => onAccess(e.target.value)} title={mode.detail}>
             {modes.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}

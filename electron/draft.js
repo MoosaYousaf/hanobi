@@ -1,5 +1,5 @@
 // The one place where streamed output becomes message parts.
-// Parts: { type: 'text' | 'thinking', text } and { type: 'tool', id, name, input, output, status }.
+// Parts: { type: 'text' | 'thinking', text }, { type: 'tool', id, name, input, output, status }, and { type: 'file', name, path, size, mediaType }.
 class Draft {
   constructor() {
     this.parts = [];
@@ -33,6 +33,7 @@ class Draft {
     this.version++;
   }
   setStatus(id, status) { const part = this.parts.find(p => p.type === 'tool' && p.id === id); if (part) { part.status = status; this.version++; } }
+  file(part) { this.parts.push(part); this.version++; }
   hasText() { return this.parts.some(p => p.type === 'text' && p.text.trim()); }
   // Finished tools that never reported a result are marked done, not left spinning.
   final() {

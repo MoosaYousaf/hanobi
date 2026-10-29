@@ -3,6 +3,7 @@ import { PanelLeftOpen, GitCompare, Sparkles, Trash2, Pencil, FolderOpen, Maximi
 import { useStore, setUi, loadThread, openThread, newThread, call, guard, toast, askText, askConfirm, deleteThread, closePane, toggleFocus, MAX_PANES } from '../store.js';
 import { modelLabel } from '../labels.js';
 import { Message, LiveMessage } from './Message.jsx';
+import { ThreadContext } from './Files.jsx';
 import { Composer, setDraft } from './Composer.jsx';
 import { Spark } from './Spark.jsx';
 
@@ -75,15 +76,17 @@ export function ThreadView({ threadId, panes = 1, index = 0 }) {
     if (options.conversation) setDraft(thread.id, text);
     if (files) toast(`Restored ${files.restored.length} and removed ${files.removed.length} files.`);
   });
-  // Edit = rewind the conversation to before the message, then send the new text with the original images.
+  // Edit = rewind the conversation to before the message, then send the new text with the original images and files.
   const edit = guard(async (message, text) => {
     await call('thread:rewind', thread.id, message.id, { conversation: true });
     const images = message.parts.filter(p => p.type === 'image').map(({ mediaType, data, name }) => ({ mediaType, data, name }));
+    const files = message.parts.filter(p => p.type === 'file').map(({ path, name }) => ({ path, name }));
     setDraft(thread.id, '');
-    await call('run:send', thread.id, { text, images });
+    await call('run:send', thread.id, { text, images, files });
   });
   const messages = thread.messages.slice(-count);
   return (
+    <ThreadContext.Provider value={thread.id}>
     <div className="thread">
       {focus
         ? <button className="focus-exit" title="Leave focus mode (Esc)" onClick={() => toggleFocus(false)}><Minimize2 size={14} /></button>
@@ -104,6 +107,7 @@ export function ThreadView({ threadId, panes = 1, index = 0 }) {
       </div>
       <Composer key={thread.id} thread={thread} workspace={workspace} modelLabel={currentLabel} />
     </div>
+    </ThreadContext.Provider>
   );
 }
 

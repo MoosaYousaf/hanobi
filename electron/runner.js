@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const path = require('node:path');
 const crypto = require('node:crypto');
 const { presets, modesFor, validateSettings } = require('./providers/catalog');
 const { Draft } = require('./draft');
@@ -9,6 +10,7 @@ const suggest = require('./suggest');
 const projects = require('./projects');
 const openai = require('./providers/openai');
 const { contextWindow } = require('./providers/usage');
+const { attachmentBlock, mediaType } = require('./files');
 
 const UPDATE_MS = 60;
 
@@ -21,6 +23,13 @@ const ASK_TOOL = {
     question: { type: 'string' }, header: { type: 'string', description: 'A label of at most 12 characters.' }, multiSelect: { type: 'boolean' },
     options: { type: 'array', minItems: 2, maxItems: 4, items: { type: 'object', required: ['label'], properties: { label: { type: 'string' }, description: { type: 'string' } } } }
   } } } } }
+};
+
+// API and local models make files with this tool. The user gets a file card with Preview, Open, and Save.
+const WRITE_TOOL = {
+  qualified: 'hanobi__write_file', server: 'Hanobi', name: 'write_file',
+  description: 'Create a file for the user to preview, open, and download, such as a report, a table, or a document. The extension sets the format. Text formats (.txt, .md, .csv, .json, .py, .svg, and others) take the file text. Rich formats (.docx, .pdf, .rtf, .odt, .html) take HTML body content: headings, paragraphs, lists, tables, and inline styles. Returns the saved file name.',
+  inputSchema: { type: 'object', required: ['name', 'content'], properties: { name: { type: 'string', description: 'File name with extension, for example report.docx or data.csv.' }, content: { type: 'string' } } }
 };
 
 // One question shape for every source: { id, question, header, options: [{ label, description }], multiSelect }.
@@ -44,8 +53,8 @@ function validAnswers(questions, answers) {
 }
 
 class Runner {
-  constructor({ store, secrets, mcp, send }) {
-    Object.assign(this, { store, secrets, mcp, send });
+  constructor({ store, secrets, mcp, send, files }) {
+    Object.assign(this, { store, secrets, mcp, send, files });
     this.runs = new Map(); // threadId -> { controller, draft }
     this.approvals = new Map(); // approvalId -> resolve
   }
@@ -97,9 +106,16 @@ class Runner {
   }
 
   // Validation throws synchronously so the caller sees it; the run itself continues in the background.
-  start(threadId, { text, images = [] }) {
+  start(threadId, { text, images = [], files = [] }) {
     text = String(text || '').trim();
-    if (!text && !images.length) throw new Error('Write a message first.');
+    if (!text && !images.length && !files.length) throw new Error('Write a message first.');
+    // Attachments must already be copied into this thread's folder (files:attach).
+    const inbox = this.files && this.files.dir(threadId, 'in') + path.sep;
+    const attached = files.map(f => {
+      const file = path.resolve(String(f?.path || ''));
+      if (!inbox || !file.startsWith(inbox) || !fs.existsSync(file)) throw new Error(`Attach ${f?.name || 'the file'} again.`);
+      return { type: 'file', name: path.basename(file), path: file, size: fs.statSync(file).size, mediaType: mediaType(file) };
+    });
     if (this.runs.has(threadId)) throw new Error('This conversation is already running.');
     const thread = this.store.thread(threadId);
     const workspace = this.store.workspace(thread.workspaceId);
@@ -109,16 +125,16 @@ class Runner {
     if (preset.kind !== 'cli' && !thread.model) throw new Error('Choose a model first.');
 
     const history = thread.messages.slice();
-    const user = this.store.append(threadId, { role: 'user', parts: [...images.map(i => ({ type: 'image', mediaType: i.mediaType, data: i.data, name: i.name })), ...(text ? [{ type: 'text', text }] : [])] });
+    const user = this.store.append(threadId, { role: 'user', parts: [...images.map(i => ({ type: 'image', mediaType: i.mediaType, data: i.data, name: i.name })), ...attached, ...(text ? [{ type: 'text', text }] : [])] });
     const draft = new Draft();
     const controller = new AbortController();
     this.runs.set(threadId, { controller, draft });
     this.send('thread-changed', { threadId });
     this.send('run-state', { threadId, running: true });
-    this.execute({ threadId, thread, workspace, connection, preset, history, text, draft, controller, userId: user.id });
+    this.execute({ threadId, thread, workspace, connection, preset, history, text, attached, draft, controller, userId: user.id });
   }
 
-  async execute({ threadId, thread, workspace, connection, preset, history, text, draft, controller, userId }) {
+  async execute({ threadId, thread, workspace, connection, preset, history, text, attached = [], draft, controller, userId }) {
     // A file checkpoint before the model acts makes "Rewind code" possible. Folders outside Git have none.
     // Chats and projects are not code folders, so they get no checkpoints.
     const chat = workspace.kind === 'chats' || workspace.kind === 'project';
@@ -137,17 +153,20 @@ class Runner {
     };
 
     try {
-      const common = { thread, history: this.store.thread(threadId).messages, draft, signal: controller.signal };
+      const messages = this.store.thread(threadId).messages;
+      const common = { thread, history: messages, draft, signal: controller.signal };
+      // CLI agents get this message's attachment text and paths in the prompt; API models get every attachment through the transcript.
+      const attachments = this.files ? await this.files.promptTexts(preset.kind === 'cli' ? [{ parts: attached }] : messages) : new Map();
       let result;
       if (preset.kind === 'cli') {
-        result = await cli.run({ ...common, preset, history, prompt: text, cwd: workspace.path, chat, mcpServers: this.mcp.enabledConfigs(),
+        result = await cli.run({ ...common, preset, history, prompt: [attachmentBlock(attached, attachments, { paths: true }), text].filter(Boolean).join('\n\n'), cwd: workspace.path, chat, mcpServers: this.mcp.enabledConfigs(),
           onSession: id => { if (id !== thread.sessionId) this.store.update(threadId, { sessionId: id, replay: false }); },
           approve: request => this.ask(threadId, { server: preset.name, ...request }),
           question: request => this.question(threadId, { server: preset.name, ...request }) });
       } else {
-        const tools = [...await this.mcp.tools(), ASK_TOOL];
+        const tools = [...await this.mcp.tools(), ASK_TOOL, ...(this.files ? [WRITE_TOOL] : [])];
         const system = [this.store.data.preferences.systemPrompt, workspace.kind === 'project' ? await projects.apiContext(workspace) : ''].filter(Boolean).join('\n\n');
-        const api = { ...common, apiKey: this.secrets.get(`key:${connection.id}`), system: system || undefined, tools, callTool: this.toolCaller(threadId, tools, draft) };
+        const api = { ...common, attachments, apiKey: this.secrets.get(`key:${connection.id}`), system: system || undefined, tools, callTool: this.toolCaller(threadId, tools, draft) };
         result = preset.kind === 'anthropic' ? await anthropic.run(api) : await openai.run({ ...api, baseURL: connection.baseURL || preset.baseURL });
       }
       const stopped = controller.signal.aborted;
@@ -204,6 +223,14 @@ class Runner {
         draft.toolResult(callId, result);
         return result;
       }
+      if (tool === WRITE_TOOL) {
+        try {
+          const file = await this.files.write(threadId, input?.name, input?.content);
+          const result = { output: `Saved ${file.name} (${file.size} bytes). The user sees it as a file card with Preview and Download.` };
+          draft.toolResult(callId, result); draft.file(file);
+          return result;
+        } catch (error) { const result = { output: error.message, isError: true }; draft.toolResult(callId, result); return result; }
+      }
       if (!tool) { const result = { output: `Unknown tool ${name}.`, isError: true }; draft.toolResult(callId, result); return result; }
       if (this.store.thread(threadId).mode !== 'full') {
         draft.setStatus(callId, 'pending');
@@ -252,4 +279,4 @@ class Runner {
   live() { return Object.fromEntries([...this.runs].map(([id, run]) => [id, run.draft.parts])); }
 }
 
-module.exports = { Runner, ASK_TOOL, normalizeQuestions, validAnswers };
+module.exports = { Runner, ASK_TOOL, WRITE_TOOL, normalizeQuestions, validAnswers };

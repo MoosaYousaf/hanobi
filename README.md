@@ -25,6 +25,12 @@ Hanobi runs on macOS 12 Monterey and later, including Intel Macs. It pins Electr
 - Rewind: return to before any of your messages. Rewind the conversation, the workspace files, or both. Before each turn in a Git workspace, Hanobi saves a checkpoint of every file that `.gitignore` does not exclude. It uses a private index, so your index, branches, and stash do not change. Git can delete checkpoints older than two weeks.
 - Suggested replies under the latest reply. Claude Code makes them. API and local models make them when you turn on **Settings → General → Suggested replies** (one extra request per reply).
 - Questions: the model can ask you multiple-choice questions during a turn. Claude Code (AskUserQuestion), Codex in **Ask first**, and API and local models (a `hanobi__ask_user` tool) support them.
+- Files in and out of conversations:
+  - Attach any file with **+**, drag and drop, or paste. Hanobi copies it into the conversation. Text from PDF, Word, RTF, OpenDocument, PowerPoint, Excel, CSV, and text files goes to every model. API models get images as images. CLI agents also get each file's path.
+  - Code blocks have their own bar: the language or file name, **Preview** for HTML, SVG, Markdown, and CSV, **Download** as a file with the right extension, and **Copy**.
+  - API and local models can make files with the `hanobi__write_file` tool: text formats, `.html`, `.docx`, `.rtf`, `.odt`, and `.pdf`.
+  - File cards show files you attach, files the model makes, and files a CLI agent writes. Each card has **Preview** (Quick Look), **Copy** (text, image, or the file itself), **Download**, **Open with default app**, and **Show in Finder**.
+  - **Download** on a reply saves it as Markdown, Word, or PDF.
 - Git panel: status, diffs, stage, unstage, and commit. Switch or create branches, see commits to push and pull, push, publish a new branch, and pull (fast-forward only).
 - GitHub pull requests through the GitHub CLI (`gh`): the pull request of the current branch with its state, review decision, and checks; create one (title, Markdown description, base branch, draft); list open pull requests, open them on GitHub, or check them out. Run `gh auth login` once. Hanobi stores no GitHub token.
 - A list of the skills that your CLI agents load.

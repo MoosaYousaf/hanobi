@@ -6,9 +6,10 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { Store, migrate } = require('../electron/store');
 const { Draft } = require('../electron/draft');
-const { command, apply } = require('../electron/providers/cli');
+const cli = require('../electron/providers/cli');
+const { command, apply } = cli;
 const { toProvider, replayPrompt } = require('../electron/providers/transcript');
-const { validateSettings } = require('../electron/providers/catalog');
+const { presets, validateSettings } = require('../electron/providers/catalog');
 const git = require('../electron/git');
 
 const tmp = prefix => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -101,6 +102,30 @@ test('Claude Code stream: deltas, tool calls, and tool results', () => {
   apply('claude', { type: 'result', result: 'Looking', session_id: 'abc' }, draft);
   assert.deepEqual(draft.final(), [{ type: 'text', text: 'Looking' }, { type: 'tool', id: 't1', name: 'Bash', server: undefined, input: { command: 'ls' }, output: 'a.txt', status: 'done' }]);
   assert.throws(() => apply('claude', { type: 'result', is_error: true, result: 'Credit balance too low' }, new Draft()), /Credit balance/);
+});
+
+test('Claude Code ask mode: the prompt is a stdin message, and approval prompts come back as control requests', async () => {
+  const args = command('claude', { mode: 'ask' });
+  assert.deepEqual(args.slice(args.indexOf('--input-format'), args.indexOf('--input-format') + 4), ['--input-format', 'stream-json', '--permission-prompt-tool', 'stdio']);
+  assert.throws(() => validateSettings({ preset: 'codex' }, { model: '', mode: 'ask' }), /access mode/);
+  // The fake CLI goes in $HOME/.local/bin, which comes first on the search path.
+  const home = tmp('hanobi-home-'), bin = path.join(home, '.local/bin'), savedHome = process.env.HOME;
+  fs.mkdirSync(bin, { recursive: true });
+  fs.copyFileSync(path.join(__dirname, 'fixtures/fake-claude.cjs'), path.join(bin, 'claude'));
+  fs.chmodSync(path.join(bin, 'claude'), 0o755);
+  process.env.HOME = home;
+  try {
+    assert.equal(cli.cliPath('claude', true), path.join(bin, 'claude'));
+    for (const answer of ['allow', 'deny']) {
+      const draft = new Draft(), asked = [];
+      await cli.run({ preset: presets['claude-code'], thread: { mode: 'ask', model: '', effort: '' }, history: [], prompt: 'ls', cwd: home, mcpServers: [], draft,
+        signal: new AbortController().signal, onSession() {},
+        approve: request => { asked.push(request); assert.equal(draft.parts[0].status, 'pending'); return { decision: Promise.resolve(answer), cancel() {} }; } });
+      assert.deepEqual(asked.map(r => [r.callId, r.name, r.description]), [['t1', 'Bash', 'Run a command']]);
+      assert.equal(draft.parts[0].status, answer === 'allow' ? 'done' : 'denied');
+      assert.equal(draft.parts.at(-1).text, answer);
+    }
+  } finally { process.env.HOME = savedHome; cli.cliPath('claude', true); }
 });
 
 test('history replays natively on the same provider and as text elsewhere', () => {

@@ -53,7 +53,7 @@ function state() {
     ...summary,
     mcpServers: summary.mcpServers.map(s => { const secret = secrets.get(`mcp:${s.id}`) || {}; return { ...s, envKeys: Object.keys(secret.env || {}), headerKeys: Object.keys(secret.headers || {}) }; }),
     connections: runner.connections(),
-    presets: Object.fromEntries(Object.entries(presets).map(([id, p]) => [id, { name: p.name, kind: p.kind, route: p.route, needsKey: !!p.needsKey, baseURL: p.baseURL || '', efforts: p.efforts, keyUrl: p.keyUrl || '', note: p.note || '', customModels: !!p.customModels, ...(p.kind === 'cli' ? { models: p.models } : {}) }])),
+    presets: Object.fromEntries(Object.entries(presets).map(([id, p]) => [id, { name: p.name, kind: p.kind, route: p.route, needsKey: !!p.needsKey, baseURL: p.baseURL || '', efforts: p.efforts, keyUrl: p.keyUrl || '', note: p.note || '', customModels: !!p.customModels, asks: !!p.asks, ...(p.kind === 'cli' ? { models: p.models } : {}) }])),
     modes, mcpStatus: mcp.statuses(), running: Object.keys(runner.live()), warning: store.warning, secretsAvailable: secrets.available()
   };
 }

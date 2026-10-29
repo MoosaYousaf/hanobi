@@ -5,7 +5,7 @@ Hanobi has two processes. The Electron main process (`electron/`) owns all data,
 ```
 renderer (React, sandboxed)
   │  window.hanobi.invoke(channel, …)   ← one IPC handler per action in electron/main.js
-  │  window.hanobi.on(event, …)         ← changed, thread-changed, run-update, run-state, approval
+  │  window.hanobi.on(event, …)         ← changed, thread-changed, run-update, run-state, approval, approval-done
 electron/main.js
   ├─ store.js          JSON data file, coalesced atomic writes, v1 migration, corrupt-file recovery
   ├─ secrets.js        safeStorage (Keychain) encrypted keys, MCP env/headers, OAuth tokens
@@ -13,7 +13,7 @@ electron/main.js
   │   ├─ draft.js      the only stream reducer: events → message parts
   │   └─ providers/
   │       ├─ catalog.js     presets for every route, access modes, settings validation
-  │       ├─ cli.js         Claude Code / Codex / Gemini CLI: argv, prompt on stdin, JSON event parsing
+  │       ├─ cli.js         Claude Code / Codex / Gemini / Copilot CLI: argv, prompt on stdin, JSON event parsing, Claude Code control requests
   │       ├─ anthropic.js   Messages API through @anthropic-ai/sdk, manual streaming tool loop
   │       ├─ openai.js      every OpenAI-compatible server through the openai SDK
   │       └─ transcript.js  neutral history → provider messages; CLI replay prompt
@@ -31,6 +31,10 @@ electron/main.js
 ## Streaming
 
 Adapters write into a `Draft`. The runner sends the draft parts to the renderer at most every 60 ms. Only the live message component subscribes to them. When the run ends, the runner saves the final parts as one assistant message.
+
+## Approvals
+
+`Runner.ask` is the one approval flow. API runs call it before each MCP tool call. In **Ask first**, Claude Code runs with `--input-format stream-json --permission-prompt-tool stdio`. The CLI sends each permission prompt as a `can_use_tool` control request on stdout. Hanobi answers with a `control_response` on stdin, and closes stdin after the `result` event. **Always allow** adds the tool name to the thread's `allowedTools`.
 
 ## Adding a provider
 

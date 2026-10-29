@@ -26,7 +26,8 @@ class Draft {
     const part = this.parts.find(p => p.type === 'tool' && p.id === id) || this.parts.findLast(p => p.type === 'tool' && p.status === 'running');
     if (!part) return;
     part.output = typeof output === 'string' ? output.slice(0, 20000) : output;
-    part.status = status || (isError ? 'error' : 'done');
+    // A declined call stays declined when the CLI later reports it as an error result.
+    part.status = status || (part.status === 'denied' ? 'denied' : isError ? 'error' : 'done');
     this.version++;
   }
   setStatus(id, status) { const part = this.parts.find(p => p.type === 'tool' && p.id === id); if (part) { part.status = status; this.version++; } }

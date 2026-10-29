@@ -33,7 +33,8 @@ function claudeMcpConfig(servers) {
 function command(cli, { sessionId, model = '', effort = '', mode = 'auto', mcpServers = [] }) {
   const modelArgs = model ? ['--model', model] : [];
   if (cli === 'claude') {
-    const permission = { default: [], read: ['--permission-mode', 'plan'], auto: ['--permission-mode', 'acceptEdits'], full: ['--permission-mode', 'bypassPermissions'] }[mode];
+    // ask: the prompt goes to stdin as a stream-json message, and permission prompts come back as control requests.
+    const permission = { ask: ['--input-format', 'stream-json', '--permission-prompt-tool', 'stdio'], default: [], read: ['--permission-mode', 'plan'], auto: ['--permission-mode', 'acceptEdits'], full: ['--permission-mode', 'bypassPermissions'] }[mode];
     return ['-p', '--output-format', 'stream-json', '--include-partial-messages', '--verbose', ...permission, ...modelArgs, ...(effort ? ['--effort', effort] : []), ...(sessionId ? ['--resume', sessionId] : []), ...claudeMcpConfig(mcpServers)];
   }
   if (cli === 'codex') {
@@ -109,7 +110,9 @@ function apply(cli, event, draft) {
   return null;
 }
 
-function run({ preset, thread, history, prompt, cwd, mcpServers, draft, signal, onSession }) {
+const DECLINED = 'The user declined this tool call.';
+
+function run({ preset, thread, history, prompt, cwd, mcpServers, draft, signal, onSession, approve }) {
   const executable = cliPath(preset.cli);
   if (!executable) throw new Error(`${preset.name} is not installed or not on PATH.`);
   let resume = thread.replay ? null : thread.sessionId;
@@ -117,12 +120,35 @@ function run({ preset, thread, history, prompt, cwd, mcpServers, draft, signal, 
   const input = thread.replay || (!thread.sessionId && history.length) ? replayPrompt(history, prompt) : prompt;
   const args = command(preset.cli, { ...thread, sessionId: resume, mcpServers: preset.cli === 'claude' ? mcpServers : [] });
   const child = spawn(executable, args, { cwd, env: { ...process.env, PATH: searchPath().join(path.delimiter), NO_COLOR: '1', COPILOT_AUTO_UPDATE: 'false' }, stdio: ['pipe', 'pipe', 'pipe'] });
-  child.stdin.end(input);
+  // In ask mode stdin stays open for approval answers until the turn's result arrives.
+  const asks = preset.cli === 'claude' && thread.mode === 'ask';
+  child.stdin.on('error', () => {});
+  if (asks) child.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: input } }) + '\n');
+  else child.stdin.end(input);
+  const reply = (request_id, response) => { if (child.stdin.writable) child.stdin.write(JSON.stringify({ type: 'control_response', response: { request_id, ...response } }) + '\n'); };
+  const asking = new Map(); // request_id -> cancel
+  const control = event => {
+    if (event.type === 'control_cancel_request') { asking.get(event.request_id)?.(); asking.delete(event.request_id); return; }
+    const { request_id, request = {} } = event;
+    if (request.subtype !== 'can_use_tool' || !approve) { reply(request_id, { subtype: 'error', error: `Hanobi does not handle ${request.subtype} requests.` }); return; }
+    const callId = request.tool_use_id;
+    draft.tool({ id: callId, name: request.tool_name, input: request.input });
+    draft.setStatus(callId, 'pending');
+    const { decision, cancel } = approve({ callId, name: request.tool_name, tool: request.display_name || request.tool_name, input: request.input, description: request.description, blockedPath: request.blocked_path });
+    asking.set(request_id, cancel);
+    decision.then(answer => {
+      asking.delete(request_id);
+      draft.setStatus(callId, answer === 'deny' ? 'denied' : 'running');
+      reply(request_id, { subtype: 'success', response: answer === 'deny' ? { behavior: 'deny', message: DECLINED } : { behavior: 'allow', updatedInput: request.input } });
+    });
+  };
   let pending = '', stderr = '', failure = null;
   const handle = line => {
     if (!line.trim()) return;
     let event;
     try { event = JSON.parse(line); } catch { draft.write('text', line + '\n'); return; }
+    if (event.type === 'control_request' || event.type === 'control_cancel_request') { control(event); return; }
+    if (asks && event.type === 'result') child.stdin.end();
     try { const session = apply(preset.cli, event, draft); if (session) onSession(session); }
     catch (error) { failure ||= error; }
   };

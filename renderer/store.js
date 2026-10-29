@@ -71,6 +71,7 @@ export function start() {
     if (error) toast(error);
   });
   api.on('approval', request => set(s => ({ approvals: [...s.approvals, request] })));
+  api.on('approval-done', ({ id }) => set(s => ({ approvals: s.approvals.filter(a => a.id !== id) })));
   api.on('menu', action => {
     if (action === 'settings') setUi({ settings: 'models' });
     if (action === 'new-thread') guard(newThread)();

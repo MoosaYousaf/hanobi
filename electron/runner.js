@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const crypto = require('node:crypto');
-const { presets, modes, modeGroup, validateSettings } = require('./providers/catalog');
+const { presets, modesFor, validateSettings } = require('./providers/catalog');
 const { Draft } = require('./draft');
 const cli = require('./providers/cli');
 const anthropic = require('./providers/anthropic');
@@ -51,8 +51,8 @@ class Runner {
     if (this.runs.has(threadId)) throw new Error('Wait for the current reply to finish.');
     const connectionId = next.connectionId ?? thread.connectionId;
     const { connection, preset } = this.resolve(connectionId);
-    const group = modeGroup(preset.kind);
-    const mode = modes[group].some(m => m.id === (next.mode ?? thread.mode)) ? (next.mode ?? thread.mode) : modes[group][0].id;
+    const available = modesFor(preset);
+    const mode = available.some(m => m.id === (next.mode ?? thread.mode)) ? (next.mode ?? thread.mode) : available[0].id;
     const effort = preset.efforts.includes(next.effort ?? thread.effort) ? (next.effort ?? thread.effort) : '';
     const settings = validateSettings(connection, { model: next.model ?? thread.model, effort, mode });
     const switched = connectionId !== thread.connectionId;
@@ -89,7 +89,7 @@ class Runner {
     const finish = message => {
       clearInterval(ticker);
       this.runs.delete(threadId);
-      for (const [id, entry] of this.approvals) if (entry.threadId === threadId) { entry.resolve('deny'); this.approvals.delete(id); }
+      for (const [id, entry] of this.approvals) if (entry.threadId === threadId) this.answer(id, 'deny');
       if (message) this.store.append(threadId, { role: 'assistant', connectionId: thread.connectionId, model: thread.model, ...message });
       this.send('thread-changed', { threadId });
       this.send('run-state', { threadId, running: false, error: message?.error });
@@ -100,7 +100,8 @@ class Runner {
       let result;
       if (preset.kind === 'cli') {
         result = await cli.run({ ...common, preset, history, prompt: text, cwd: workspace.path, mcpServers: this.mcp.enabledConfigs(),
-          onSession: id => { if (id !== thread.sessionId) this.store.update(threadId, { sessionId: id, replay: false }); } });
+          onSession: id => { if (id !== thread.sessionId) this.store.update(threadId, { sessionId: id, replay: false }); },
+          approve: request => this.ask(threadId, { server: preset.name, ...request }) });
       } else {
         const tools = await this.mcp.tools();
         const api = { ...common, apiKey: this.secrets.get(`key:${connection.id}`), system: this.store.data.preferences.systemPrompt || undefined, tools, callTool: this.toolCaller(threadId, tools, draft) };
@@ -117,32 +118,42 @@ class Runner {
   stop(threadId) { this.runs.get(threadId)?.controller.abort(); }
   stopAll() { for (const run of this.runs.values()) run.controller.abort(); }
 
-  // Each MCP call asks the user first unless the thread allows all tools or this tool was always allowed.
+  // Each MCP call asks the user first unless the thread allows all tools.
   toolCaller(threadId, tools, draft) {
     const byName = new Map(tools.map(t => [t.qualified, t]));
     return async (callId, name, input) => {
       const tool = byName.get(name);
       if (!tool) { const result = { output: `Unknown tool ${name}.`, isError: true }; draft.toolResult(callId, result); return result; }
-      const thread = this.store.thread(threadId);
-      if (thread.mode !== 'full' && !(thread.allowedTools || []).includes(name)) {
+      if (this.store.thread(threadId).mode !== 'full') {
         draft.setStatus(callId, 'pending');
-        const id = crypto.randomUUID();
-        const decision = await new Promise(resolve => {
-          this.approvals.set(id, { threadId, resolve });
-          this.send('approval', { id, threadId, callId, server: tool.server, tool: tool.name, input });
-        });
+        const decision = await this.ask(threadId, { callId, name, server: tool.server, tool: tool.name, input }).decision;
         if (decision === 'deny') { const result = { output: 'The user declined this tool call.', isError: true }; draft.toolResult(callId, { ...result, status: 'denied' }); return result; }
-        if (decision === 'always') this.store.update(threadId, { allowedTools: [...(thread.allowedTools || []), name] });
         draft.setStatus(callId, 'running');
       }
       try { const result = await this.mcp.call(tool, input); draft.toolResult(callId, result); return result; }
       catch (error) { const result = { output: error.message, isError: true }; draft.toolResult(callId, result); return result; }
     };
   }
+  // One approval flow for MCP calls and CLI permission prompts. A tool the user always allowed in this thread passes at once.
+  // Returns { decision, cancel }; cancel denies and removes the request, for example when the CLI withdraws it.
+  ask(threadId, { name, ...request }) {
+    if ((this.store.thread(threadId).allowedTools || []).includes(name)) return { decision: Promise.resolve('allow'), cancel() {} };
+    const id = crypto.randomUUID();
+    const decision = new Promise(resolve => {
+      this.approvals.set(id, { threadId, resolve });
+      this.send('approval', { id, threadId, ...request });
+    }).then(answer => {
+      const allowed = this.store.thread(threadId).allowedTools || [];
+      if (answer === 'always' && !allowed.includes(name)) this.store.update(threadId, { allowedTools: [...allowed, name] });
+      return answer;
+    });
+    return { decision, cancel: () => this.answer(id, 'deny') };
+  }
   answer(approvalId, decision) {
     const entry = this.approvals.get(approvalId);
     if (!entry) return;
     this.approvals.delete(approvalId);
+    this.send('approval-done', { id: approvalId });
     entry.resolve(['allow', 'always', 'deny'].includes(decision) ? decision : 'deny');
   }
   live() { return Object.fromEntries([...this.runs].map(([id, run]) => [id, run.draft.parts])); }

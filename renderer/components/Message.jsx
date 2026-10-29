@@ -66,10 +66,12 @@ function Approval({ request }) {
   return (
     <div className="approval" role="alertdialog" aria-label="Tool approval">
       <div className="approval-title">Allow <strong>{request.server}</strong> to run <code>{request.tool}</code>?</div>
+      {request.description ? <div className="approval-detail">{request.description}</div> : null}
+      {request.blockedPath ? <div className="approval-detail">Path: <code>{request.blockedPath}</code></div> : null}
       <pre className="approval-input">{show(request.input)}</pre>
       <div className="approval-actions">
         <button className="btn" onClick={act('deny')}>Deny</button>
-        <button className="btn" onClick={act('always')}>Always allow in this chat</button>
+        <button className="btn" onClick={act('always')}>Always allow {request.tool} in this chat</button>
         <button className="btn primary" onClick={act('allow')} autoFocus>Allow once</button>
       </div>
     </div>

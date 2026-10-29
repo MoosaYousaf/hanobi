@@ -26,7 +26,7 @@ export function Composer({ thread, workspace, modelLabel }) {
   const connection = app.connections.find(c => c.id === thread.connectionId);
   const preset = connection && app.presets[connection.preset];
   const isCli = preset?.kind === 'cli';
-  const modes = app.modes[isCli ? 'cli' : 'api'];
+  const modes = app.modes[isCli ? 'cli' : 'api'].filter(m => !m.asks || preset?.asks);
   const mode = modes.find(m => m.id === thread.mode) || modes[0];
 
   const update = value => { setText(value); drafts.set(thread.id, value); };

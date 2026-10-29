@@ -3,7 +3,7 @@
 const EFFORTS = ['', 'low', 'medium', 'high', 'xhigh', 'max'];
 
 const presets = {
-  'claude-code': { kind: 'cli', cli: 'claude', name: 'Claude Code', route: 'subscription', efforts: EFFORTS,
+  'claude-code': { kind: 'cli', cli: 'claude', name: 'Claude Code', route: 'subscription', efforts: EFFORTS, asks: true,
     models: [{ id: '', label: 'CLI default' }, { id: 'claude-opus-5-5', label: 'Opus 5.5' }, { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' }, { id: 'claude-haiku-5-5', label: 'Haiku 5.5' }, { id: 'claude-fable-5-1', label: 'Fable 5.1' }] },
   codex: { kind: 'cli', cli: 'codex', name: 'Codex', route: 'subscription', efforts: EFFORTS,
     models: [{ id: '', label: 'CLI default' }, { id: 'gpt-6.1-sol', label: 'GPT-6.1 Sol' }, { id: 'gpt-6-astra', label: 'GPT-6 Astra' }, { id: 'gpt-6.1-terra', label: 'GPT-6.1 Terra' }, { id: 'gpt-6-luna', label: 'GPT-6 Luna' }] },
@@ -27,8 +27,10 @@ const presets = {
 };
 
 // CLI agents control their own tools; API chats ask before each MCP tool call unless set to allow.
+// A mode with asks: true needs a CLI that sends its permission prompts to Hanobi.
 const modes = {
   cli: [
+    { id: 'ask', label: 'Ask first', detail: 'Ask in this view before each action the CLI’s rules do not allow.', asks: true },
     { id: 'default', label: 'CLI rules', detail: 'Use the CLI’s saved permission rules. Requests that need a prompt are denied in this view.' },
     { id: 'read', label: 'Read only', detail: 'Inspect and plan without editing files.' },
     { id: 'auto', label: 'Auto edits', detail: 'Allow file edits. Other actions follow the CLI’s restrictions.' },
@@ -40,18 +42,19 @@ const modes = {
   ]
 };
 const modeGroup = kind => (kind === 'cli' ? 'cli' : 'api');
+const modesFor = preset => modes[modeGroup(preset.kind)].filter(m => !m.asks || preset.asks);
 
 function validateSettings(connection, settings) {
   const preset = presets[connection.preset];
   if (!preset) throw new Error('Unknown connection.');
   const model = String(settings.model ?? '');
   const effort = String(settings.effort ?? '');
-  const mode = String(settings.mode ?? modes[modeGroup(preset.kind)][0].id);
+  const mode = String(settings.mode ?? modesFor(preset)[0].id);
   const listed = preset.kind === 'cli' && preset.models.some(m => m.id === model);
   if (!listed && (preset.kind === 'cli' && !preset.customModels || !/^[\w.:/@+-]{1,200}$/.test(model))) throw new Error('Choose a model.');
   if (!preset.efforts.includes(effort)) throw new Error('This model does not support that effort level.');
-  if (!modes[modeGroup(preset.kind)].some(m => m.id === mode)) throw new Error('Unknown access mode.');
+  if (!modesFor(preset).some(m => m.id === mode)) throw new Error('Unknown access mode.');
   return { model, effort, mode };
 }
 
-module.exports = { presets, modes, modeGroup, validateSettings };
+module.exports = { presets, modes, modeGroup, modesFor, validateSettings };

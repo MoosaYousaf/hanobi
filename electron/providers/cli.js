@@ -134,6 +134,10 @@ async function run(options) {
   return result;
 }
 
+// How long a turn waits for the output pipes after the CLI exits, and for the CLI to exit after its result.
+const EXIT_GRACE_MS = 400;
+const RESULT_GRACE_MS = 3000;
+
 function runTurn({ preset, thread, history, prompt, cwd, chat = false, mcpServers, draft, signal, onSession, approve, question }) {
   const executable = cliPath(preset.cli);
   if (!executable) throw new Error(`${preset.name} is not installed or not on PATH.`);
@@ -184,13 +188,14 @@ function runTurn({ preset, thread, history, prompt, cwd, chat = false, mcpServer
       if (answer === 'deny') deny(DECLINED); else allow(request.input);
     });
   };
-  let pending = '', stderr = '', failure = null;
+  let pending = '', stderr = '', failure = null, timer = null, ended = () => {};
   const handle = line => {
     if (!line.trim()) return;
     let event;
     try { event = JSON.parse(line); } catch { draft.write('text', line + '\n'); return; }
     if (event.type === 'control_request' || event.type === 'control_cancel_request') { control(event); return; }
     if (asks && event.type === 'result') child.stdin.end();
+    if (event.type === 'result') ended();
     try { const session = apply(preset.cli, event, draft); if (session) onSession(session); }
     catch (error) { failure ||= error; }
   };
@@ -204,16 +209,28 @@ function runTurn({ preset, thread, history, prompt, cwd, chat = false, mcpServer
   child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-16000); });
   const stop = () => child.kill('SIGTERM');
   signal.addEventListener('abort', stop, { once: true });
+  // 'close' waits for every holder of the output pipes. A background process that the agent started (a dev server,
+  // `npm start`) inherits them, so the turn also ends shortly after the CLI exits, or a little after its result
+  // event when the CLI stays open for its own background work. Hanobi leaves such processes running.
   return new Promise((resolve, reject) => {
-    child.on('error', reject);
-    child.on('close', (code, killedBy) => {
+    let done = false;
+    const finish = (code, killedBy) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
       signal.removeEventListener('abort', stop);
-      handle(pending);
+      handle(pending); pending = '';
+      child.stdout.removeAllListeners('data'); child.stderr.removeAllListeners('data');
+      child.stdout.destroy(); child.stderr.destroy(); child.unref();
       if (signal.aborted) resolve({ stopped: true });
       else if (failure) reject(failure);
       else if (code === 0) resolve({});
       else reject(new Error(stderr.trim() || `${preset.name} exited with ${killedBy || `code ${code}`}.`));
-    });
+    };
+    ended = () => { if (!timer) timer = setTimeout(() => finish(0), RESULT_GRACE_MS); };
+    child.on('error', reject);
+    child.on('exit', (code, killedBy) => { clearTimeout(timer); timer = setTimeout(() => finish(code, killedBy), EXIT_GRACE_MS); });
+    child.on('close', finish);
   });
 }
 

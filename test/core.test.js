@@ -135,6 +135,14 @@ test('Claude Code ask mode: the prompt is a stdin message, and approval prompts 
     await cli.run({ ...base, thread: { mode: 'auto', model: '', effort: '' }, prompt: 'ls', draft, approve: () => assert.fail('not in ask mode'), question() {} });
     assert.equal(draft.parts[0].status, 'denied');
     assert.equal(draft.parts.at(-1).text, 'deny');
+    // The turn ends when the CLI is done, even when a background job keeps the output pipe open or the CLI stays open.
+    for (const prompt of ['background', 'linger']) {
+      draft = new Draft();
+      const started = Date.now();
+      await cli.run({ ...base, thread: { mode: 'auto', model: '', effort: '' }, prompt, draft, question() {} });
+      assert.equal(draft.parts.at(-1).text, 'Done.');
+      assert.ok(Date.now() - started < 5000, `${prompt} turn ended in ${Date.now() - started} ms`);
+    }
   } finally { process.env.HOME = savedHome; cli.cliPath('claude', true); }
 });
 

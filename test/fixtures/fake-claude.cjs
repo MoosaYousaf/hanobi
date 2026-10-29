@@ -10,6 +10,12 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     const input = { questions: [{ question: 'Which database?', header: 'Database', multiSelect: false, options: [{ label: 'Postgres', description: '' }, { label: 'SQLite', description: '' }] }] };
     out({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'q1', name: 'AskUserQuestion', input }] } });
     out({ type: 'control_request', request_id: 'r1', request: { subtype: 'can_use_tool', tool_name: 'AskUserQuestion', input, tool_use_id: 'q1' } });
+  } else if (event.type === 'user' && (event.message.content === 'background' || event.message.content === 'linger')) {
+    // A background job holds stdout open after this CLI exits ('background'), or the CLI stays open after its result ('linger').
+    if (event.message.content === 'background') require('node:child_process').spawn('sleep', ['20'], { stdio: ['ignore', 'inherit', 'inherit'], detached: true }).unref();
+    else setInterval(() => {}, 1000);
+    out({ type: 'assistant', message: { content: [{ type: 'text', text: 'Done.' }] } });
+    out({ type: 'result', result: 'Done.', session_id: 'fake-session' });
   } else if (event.type === 'user') {
     out({ type: 'system', subtype: 'init', session_id: 'fake-session' });
     out({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: event.message.content } }] } });

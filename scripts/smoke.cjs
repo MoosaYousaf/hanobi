@@ -108,6 +108,11 @@ app.whenReady().then(async () => {
     await clickText(win, '.suggestion', 'Show the migration steps');
     await until(win, `document.querySelector('.composer textarea, textarea').value === 'Show the migration steps'`, 'a suggestion fills the composer');
     await win.webContents.executeJavaScript(`(() => { const t = document.querySelector('.composer textarea, textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, ''); t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    // A long prompt grows the composer; clearing it (as a send does) puts it back to one row.
+    const setComposer = value => win.webContents.executeJavaScript(`(() => { const t = document.querySelector('.composer textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, ${JSON.stringify(value)}); t.dispatchEvent(new Event('input', { bubbles: true })); return t.getBoundingClientRect().height; })()`);
+    const oneRow = await setComposer('');
+    if (!(await setComposer('A long prompt line\n'.repeat(8)) > oneRow + 60)) throw new Error('a long prompt does not grow the composer');
+    if (await setComposer('') !== oneRow) throw new Error('the composer stays tall after it is cleared');
     win.webContents.send('run-state', { threadId: 't1', running: true, startedAt: Date.now() - 65000 });
     win.webContents.send('run-update', { threadId: 't1', parts: [text('Checking the docs connector.'), { type: 'tool', id: 'c', name: 'search', server: 'Notion', input: { query: 'release plan' }, status: 'pending' }] });
     win.webContents.send('approval', { id: 'p1', threadId: 't1', callId: 'c', server: 'Notion', tool: 'search', input: { query: 'release plan' } });

@@ -156,7 +156,7 @@ function runHtml(html, title = 'Snippet') {
   const ses = session.fromPartition('hanobi-run');
   ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   ses.setPermissionCheckHandler(() => false);
-  const win = new BrowserWindow({ width: 960, height: 720, title: `Run: ${String(title).slice(0, 80)}`, backgroundColor: '#ffffff',
+  const win = new BrowserWindow({ width: 960, height: 720, title: `Run: ${String(title).slice(0, 80)}`, backgroundColor: nativeTheme.shouldUseDarkColors ? '#1f1f1e' : '#ffffff',
     webPreferences: { partition: 'hanobi-run', sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: true, webviewTag: false, spellcheck: false } });
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:\/\//.test(url)) shell.openExternal(url); return { action: 'deny' }; });
   win.webContents.on('will-navigate', (event, url) => { event.preventDefault(); if (/^https?:\/\//.test(url)) shell.openExternal(url); });

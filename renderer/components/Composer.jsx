@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowUp, Square, Plus, X, Mic } from 'lucide-react';
 import { useStore, getState, call, guard, toast, askConfirm } from '../store.js';
 import { startVoice, stopVoice, cancelVoice } from '../voice/voice.js';
@@ -138,6 +138,13 @@ export function Composer({ thread, workspace, modelLabel }) {
   const chatCli = isCli && workspace.kind && workspace.kind !== 'code';
 
   const update = value => { setText(value); drafts.set(thread.id, value); };
+  // The box fits its text on every change: typing, a send that clears it, voice input, or a restored draft.
+  useLayoutEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    if (text) el.style.height = Math.min(el.scrollHeight, 260) + 'px';
+  }, [text]);
   useEffect(() => {
     const onDraft = e => { if (e.detail === thread.id) { setText(drafts.get(thread.id) ?? ''); input.current?.focus(); } };
     window.addEventListener('hanobi-draft', onDraft);
@@ -179,7 +186,7 @@ export function Composer({ thread, workspace, modelLabel }) {
         ) : null}
         <textarea
           ref={input} autoFocus rows={1} value={text} placeholder={`Message ${modelLabel.split(' · ')[0]}…`}
-          onChange={e => { update(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 260) + 'px'; }}
+          onChange={e => update(e.target.value)}
           onPaste={e => { const files = [...e.clipboardData.files]; if (files.length) { e.preventDefault(); attach(files); } }}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
         />

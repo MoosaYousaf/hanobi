@@ -428,7 +428,7 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 .segmented button + button { border-left: 1px solid var(--border-strong); }
 .segmented button.on { background: var(--selected); color: var(--text); font-weight: 550; }
 
-.toast { position: fixed; z-index: 60; bottom: 22px; left: 50%; transform: translateX(-50%); max-width: min(620px, 80vw); background: var(--raised); color: var(--text); border: 1px solid var(--border-strong); padding: 10px 16px; border-radius: 10px; box-shadow: var(--pop-shadow); font-size: 13px; animation: rise .16s ease-out; white-space: pre-wrap; }
+.toast { position: fixed; z-index: 60; top: 58px; left: 50%; transform: translateX(-50%); max-width: min(620px, 80vw); background: var(--raised); color: var(--text); border: 1px solid var(--border-strong); padding: 10px 16px; border-radius: 10px; box-shadow: var(--pop-shadow); font-size: 13px; animation: rise .16s ease-out; white-space: pre-wrap; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 50% { opacity: .45; } }

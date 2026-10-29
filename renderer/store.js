@@ -9,7 +9,7 @@ let state = {
   app: null,
   threads: {}, // id -> thread with messages
   live: {}, // threadId -> streaming parts
-  approvals: [],
+  approvals: [], // approval requests and model questions; questions carry `questions`
   ui: { workspaceId: null, threadId: null, panel: null, settings: null, sidebar: true },
   toast: null
 };
@@ -71,6 +71,7 @@ export function start() {
     if (error) toast(error);
   });
   api.on('approval', request => set(s => ({ approvals: [...s.approvals, request] })));
+  api.on('question', request => set(s => ({ approvals: [...s.approvals, request] })));
   api.on('approval-done', ({ id }) => set(s => ({ approvals: s.approvals.filter(a => a.id !== id) })));
   api.on('menu', action => {
     if (action === 'settings') setUi({ settings: 'models' });
@@ -83,4 +84,9 @@ export function start() {
 export async function answerApproval(id, decision) {
   set(s => ({ approvals: s.approvals.filter(a => a.id !== id) }));
   await call('run:approve', id, decision);
+}
+
+export async function answerQuestion(id, answers) {
+  set(s => ({ approvals: s.approvals.filter(a => a.id !== id) }));
+  await call('run:answer', id, answers);
 }

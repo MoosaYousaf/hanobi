@@ -27,7 +27,7 @@ function apply(method, params, draft) {
   else if (method === 'turn/completed' && params.turn?.status === 'failed') throw new Error(params.turn.error?.message || 'Codex turn failed.');
 }
 
-function run({ executable, env, cwd, input, resume, model, effort, draft, signal, onSession, approve }) {
+function run({ executable, env, cwd, input, resume, model, effort, draft, signal, onSession, approve, question }) {
   const child = spawn(executable, ['app-server'], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdin.on('error', () => {});
   const write = message => { if (child.stdin.writable) child.stdin.write(JSON.stringify(message) + '\n'); };
@@ -42,6 +42,20 @@ function run({ executable, env, cwd, input, resume, model, effort, draft, signal
 
   // A server request waits for the user; anything Hanobi does not handle gets an error so the turn does not hang.
   const serve = message => {
+    // A user input request: answers are keyed by question id. An empty answer set means the user skipped.
+    if (message.method === 'item/tool/requestUserInput' && question) {
+      const p = message.params || {};
+      draft.tool({ id: p.itemId, name: 'Question', input: p.questions?.map(q => q.question).join('\n') });
+      draft.setStatus(p.itemId, 'pending');
+      const { decision, cancel } = question({ callId: p.itemId, questions: p.questions || [] });
+      asking.set(message.id, cancel);
+      decision.then(answers => {
+        asking.delete(message.id);
+        draft.toolResult(p.itemId, answers ? { output: Object.values(answers).flat().join('\n') } : { output: 'Skipped', status: 'denied' });
+        write({ id: message.id, result: { answers: Object.fromEntries(Object.entries(answers || {}).map(([id, list]) => [id, { answers: list }])) } });
+      });
+      return;
+    }
     const name = NAMES[message.method];
     if (!name || !approve) { write({ id: message.id, error: { code: -32601, message: `Hanobi does not handle ${message.method}.` } }); return; }
     const p = message.params || {};

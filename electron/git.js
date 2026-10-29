@@ -90,9 +90,10 @@ async function snapshot(cwd) {
   const top = await root(cwd);
   const scope = path.relative(top, await fs.realpath(cwd)) || '.';
   const tree = await withIndex(top, async env => {
-    // Starting from a copy of the real index lets git reuse its file stat cache.
+    // Starting from a copy of the real index lets git reuse its file stat cache. The copy keeps the index's own
+    // modification time: git rechecks files changed in the same second as the index only by comparing it to that time.
     const real = path.resolve(top, (await git(top, ['rev-parse', '--git-path', 'index'])).trim());
-    await fs.copyFile(real, env.GIT_INDEX_FILE).catch(() => {});
+    await fs.copyFile(real, env.GIT_INDEX_FILE).then(async () => { const { atime, mtime } = await fs.stat(real); await fs.utimes(env.GIT_INDEX_FILE, atime, mtime); }).catch(() => {});
     await git(top, ['add', '-A'], { env, timeout: 120000 });
     return (await git(top, ['write-tree'], { env })).trim();
   });

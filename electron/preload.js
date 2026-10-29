@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 // Main registers one handler per action, so only those channels answer an invoke.
-const events = new Set(['changed', 'thread-changed', 'run-update', 'run-state', 'approval', 'approval-done', 'git-changed', 'menu']);
+const events = new Set(['changed', 'thread-changed', 'run-update', 'run-state', 'approval', 'approval-done', 'question', 'git-changed', 'menu']);
 contextBridge.exposeInMainWorld('hanobi', {
   invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
   on: (channel, callback) => {

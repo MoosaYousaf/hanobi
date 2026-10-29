@@ -99,6 +99,7 @@ const handlers = {
   'run:send': (id, message) => runner.start(id, message),
   'run:stop': id => runner.stop(id),
   'run:approve': (approvalId, decision) => runner.answer(approvalId, decision),
+  'run:answer': (questionId, answers) => runner.answer(questionId, answers),
   'models:list': id => runner.models(id),
   'models:refresh': async id => { const models = await runner.refreshModels(id); changed(); return models; },
   'connection:save': input => {

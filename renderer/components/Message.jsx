@@ -3,7 +3,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChevronRight, Check, Copy, Wrench, CircleAlert, Ban, Clock, GitBranch, RotateCcw } from 'lucide-react';
 import { Working } from './Spark.jsx';
-import { useStore, answerApproval, guard } from '../store.js';
+import { useStore, answerApproval, answerQuestion, guard } from '../store.js';
 
 const plugins = [remarkGfm];
 
@@ -78,6 +78,41 @@ function Approval({ request }) {
   );
 }
 
+// Questions from the model. Each question takes one option (or several with multiSelect), or the user's own text.
+function Question({ request }) {
+  const [picked, setPicked] = useState({}); // question id -> labels
+  const [other, setOther] = useState({}); // question id -> typed answer
+  const toggle = (q, label) => setPicked(p => {
+    const now = p[q.id] || [];
+    return { ...p, [q.id]: q.multiSelect ? (now.includes(label) ? now.filter(l => l !== label) : [...now, label]) : [label] };
+  });
+  const answers = Object.fromEntries(request.questions.map(q => [q.id, [...(picked[q.id] || []), ...(other[q.id]?.trim() ? [other[q.id].trim()] : [])].slice(0, q.multiSelect ? 99 : 1)]));
+  const ready = request.questions.every(q => answers[q.id].length);
+  const send = value => guard(() => answerQuestion(request.id, value))();
+  return (
+    <div className="question" role="dialog" aria-label="Questions from the model">
+      {request.questions.map(q => (
+        <fieldset key={q.id} className="question-item">
+          <legend>{q.header ? <span className="question-header">{q.header}</span> : null}{q.question}</legend>
+          <div className="question-options">
+            {q.options.map(o => (
+              <button key={o.label} className={`question-option ${(picked[q.id] || []).includes(o.label) ? 'on' : ''}`} aria-pressed={(picked[q.id] || []).includes(o.label)} onClick={() => { toggle(q, o.label); if (!q.multiSelect) setOther(t => ({ ...t, [q.id]: '' })); }}>
+                <strong>{o.label}</strong>{o.description ? <span>{o.description}</span> : null}
+              </button>
+            ))}
+          </div>
+          <input className="question-other" placeholder={q.multiSelect ? 'Add your own answer' : 'Or type your own answer'} value={other[q.id] || ''}
+            onChange={e => { const value = e.target.value; setOther(t => ({ ...t, [q.id]: value })); if (!q.multiSelect && value) setPicked(p => ({ ...p, [q.id]: [] })); }} />
+        </fieldset>
+      ))}
+      <div className="approval-actions">
+        <button className="btn" onClick={() => send(null)}>Skip</button>
+        <button className="btn primary" disabled={!ready} onClick={() => send(answers)}>Send answers</button>
+      </div>
+    </div>
+  );
+}
+
 function Parts({ parts, live }) {
   return parts.map((part, i) => {
     if (part.type === 'text') return part.text ? <Prose key={i} text={part.text} /> : null;
@@ -136,7 +171,7 @@ export function LiveMessage({ threadId, modelLabel }) {
     <article className="msg assistant live">
       <div className="msg-meta">{modelLabel}</div>
       <Parts parts={parts} live />
-      {mine.map(a => <Approval key={a.id} request={a} />)}
+      {mine.map(a => (a.questions ? <Question key={a.id} request={a} /> : <Approval key={a.id} request={a} />))}
       {!mine.length ? <Working label={parts.length ? 'Working' : 'Thinking'} /> : null}
     </article>
   );

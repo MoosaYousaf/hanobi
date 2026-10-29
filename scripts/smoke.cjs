@@ -58,7 +58,11 @@ app.whenReady().then(async () => {
     win.webContents.send('run-state', { threadId: 't1', running: true });
     win.webContents.send('run-update', { threadId: 't1', parts: [text('Checking the docs connector.'), { type: 'tool', id: 'c', name: 'search', server: 'Notion', input: { query: 'release plan' }, status: 'pending' }] });
     win.webContents.send('approval', { id: 'p1', threadId: 't1', callId: 'c', server: 'Notion', tool: 'search', input: { query: 'release plan' } });
-    await until(win, `!!document.querySelector('.approval') && !!document.querySelector('.send.stop')`, 'live reply and approval render');
+    win.webContents.send('question', { id: 'q1', threadId: 't1', callId: 'q', server: 'Claude Code', questions: [{ id: '0', header: 'Scope', question: 'Which releases should I cover?', multiSelect: false, options: [{ label: 'Only 2.x', description: 'The current major version.' }, { label: 'All releases', description: 'Includes 1.x.' }] }] });
+    await until(win, `!!document.querySelector('.approval') && !!document.querySelector('.question') && !!document.querySelector('.send.stop')`, 'live reply, approval, and question render');
+    await clickText(win, '.question-option', 'All releases');
+    await until(win, `!document.querySelector('.question .btn.primary').disabled`, 'an option enables Send answers');
+    await win.webContents.executeJavaScript(`document.querySelector('.question').scrollIntoView({ block: 'end' })`);
     await shot(win, '1b-thread');
     win.webContents.send('run-state', { threadId: 't1', running: false });
     await until(win, `!document.querySelector('.approval')`, 'live reply clears');
@@ -98,7 +102,7 @@ app.whenReady().then(async () => {
     await clickText(win, '.rewind-menu button', 'Rewind conversation');
     await until(win, `!document.querySelector('.msg') && document.querySelector('.composer textarea, textarea').value.includes('breaking change')`, 'rewind empties the thread and refills the composer');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies.\n');
+    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions.\n');
     app.exit(0);
   } catch (error) { process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }
 });

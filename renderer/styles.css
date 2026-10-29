@@ -364,3 +364,15 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 .suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin: -12px 0 24px; }
 .suggestion { padding: 6px 11px; border-radius: 16px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-2); font-size: 12.5px; text-align: left; }
 .suggestion:hover { color: var(--text); border-color: var(--text-3); }
+
+.question { border: 1px solid var(--accent); border-radius: 11px; padding: 12px 14px; margin: 4px 0 10px; background: var(--surface); display: grid; gap: 14px; }
+.question-item { border: 0; margin: 0; padding: 0; min-width: 0; }
+.question-item legend { padding: 0; margin-bottom: 8px; font-size: 13.5px; font-weight: 550; }
+.question-header { display: inline-block; margin-right: 8px; padding: 1px 7px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; vertical-align: 1px; }
+.question-options { display: grid; gap: 6px; }
+.question-option { display: grid; gap: 2px; text-align: left; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--bg); }
+.question-option strong { font-weight: 550; }
+.question-option span { font-size: 12px; color: var(--text-2); }
+.question-option:hover { border-color: var(--text-3); }
+.question-option.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.question-other { width: 100%; margin-top: 6px; height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text); font: inherit; }

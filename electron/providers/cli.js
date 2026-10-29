@@ -34,9 +34,10 @@ function claudeMcpConfig(servers) {
 function command(cli, { sessionId, model = '', effort = '', mode = 'auto', mcpServers = [] }) {
   const modelArgs = model ? ['--model', model] : [];
   if (cli === 'claude') {
-    // ask: the prompt goes to stdin as a stream-json message, and permission prompts come back as control requests.
-    const permission = { ask: ['--input-format', 'stream-json', '--permission-prompt-tool', 'stdio'], default: [], read: ['--permission-mode', 'plan'], auto: ['--permission-mode', 'acceptEdits'], full: ['--permission-mode', 'bypassPermissions'] }[mode];
-    return ['-p', '--output-format', 'stream-json', '--include-partial-messages', '--verbose', '--prompt-suggestions', ...permission, ...modelArgs, ...(effort ? ['--effort', effort] : []), ...(sessionId ? ['--resume', sessionId] : []), ...claudeMcpConfig(mcpServers)];
+    // The prompt goes to stdin as a stream-json message, and permission prompts and questions come back as control requests.
+    // In "ask" Hanobi shows the permission prompts; in the other modes it denies them, as the CLI does without a person.
+    const permission = { ask: [], default: [], read: ['--permission-mode', 'plan'], auto: ['--permission-mode', 'acceptEdits'], full: ['--permission-mode', 'bypassPermissions'] }[mode];
+    return ['-p', '--input-format', 'stream-json', '--permission-prompt-tool', 'stdio', '--output-format', 'stream-json', '--include-partial-messages', '--verbose', '--prompt-suggestions', ...permission, ...modelArgs, ...(effort ? ['--effort', effort] : []), ...(sessionId ? ['--resume', sessionId] : []), ...claudeMcpConfig(mcpServers)];
   }
   if (cli === 'codex') {
     const access = { default: [], read: ['--sandbox', 'read-only', '-c', 'approval_policy="never"'], auto: ['--sandbox', 'workspace-write', '-c', 'approval_policy="never"'], full: ['--dangerously-bypass-approvals-and-sandbox'] }[mode];
@@ -113,19 +114,21 @@ function apply(cli, event, draft) {
 }
 
 const DECLINED = 'The user declined this tool call.';
+const NOT_ASKED = 'This access mode does not allow actions that need approval. The user can choose Ask first to approve them.';
+const SKIPPED = 'The user skipped the questions.';
 
-function run({ preset, thread, history, prompt, cwd, mcpServers, draft, signal, onSession, approve }) {
+function run({ preset, thread, history, prompt, cwd, mcpServers, draft, signal, onSession, approve, question }) {
   const executable = cliPath(preset.cli);
   if (!executable) throw new Error(`${preset.name} is not installed or not on PATH.`);
   let resume = thread.replay ? null : thread.sessionId;
   if (preset.cli === 'copilot' && !resume) { resume = crypto.randomUUID(); onSession(resume); }
   const input = thread.replay || (!thread.sessionId && history.length) ? replayPrompt(history, prompt) : prompt;
   const env = { ...process.env, PATH: searchPath().join(path.delimiter), NO_COLOR: '1', COPILOT_AUTO_UPDATE: 'false' };
-  if (preset.cli === 'codex' && thread.mode === 'ask') return codexServer.run({ executable, env, cwd, input, resume, model: thread.model, effort: thread.effort, draft, signal, onSession, approve });
+  if (preset.cli === 'codex' && thread.mode === 'ask') return codexServer.run({ executable, env, cwd, input, resume, model: thread.model, effort: thread.effort, draft, signal, onSession, approve, question });
   const args = command(preset.cli, { ...thread, sessionId: resume, mcpServers: preset.cli === 'claude' ? mcpServers : [] });
   const child = spawn(executable, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
-  // In ask mode stdin stays open for approval answers until the turn's result arrives.
-  const asks = preset.cli === 'claude' && thread.mode === 'ask';
+  // Claude Code keeps stdin open for approval and question answers until the turn's result arrives.
+  const asks = preset.cli === 'claude';
   child.stdin.on('error', () => {});
   if (asks) child.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: input } }) + '\n');
   else child.stdin.end(input);
@@ -134,16 +137,33 @@ function run({ preset, thread, history, prompt, cwd, mcpServers, draft, signal, 
   const control = event => {
     if (event.type === 'control_cancel_request') { asking.get(event.request_id)?.(); asking.delete(event.request_id); return; }
     const { request_id, request = {} } = event;
-    if (request.subtype !== 'can_use_tool' || !approve) { reply(request_id, { subtype: 'error', error: `Hanobi does not handle ${request.subtype} requests.` }); return; }
+    if (request.subtype !== 'can_use_tool') { reply(request_id, { subtype: 'error', error: `Hanobi does not handle ${request.subtype} requests.` }); return; }
     const callId = request.tool_use_id;
+    const allow = updatedInput => reply(request_id, { subtype: 'success', response: { behavior: 'allow', updatedInput } });
+    const deny = message => reply(request_id, { subtype: 'success', response: { behavior: 'deny', message } });
     draft.tool({ id: callId, name: request.tool_name, input: request.input });
+    // AskUserQuestion takes its answers in updatedInput.answers, keyed by question text.
+    if (request.tool_name === 'AskUserQuestion' && question) {
+      const questions = request.input?.questions || [];
+      draft.setStatus(callId, 'pending');
+      const { decision, cancel } = question({ callId, questions: questions.map((q, i) => ({ ...q, id: String(i) })) });
+      asking.set(request_id, cancel);
+      decision.then(answers => {
+        asking.delete(request_id);
+        draft.setStatus(callId, answers ? 'running' : 'denied');
+        if (answers) allow({ ...request.input, answers: Object.fromEntries(questions.map((q, i) => [q.question, answers[String(i)].join(', ')])) });
+        else deny(SKIPPED);
+      });
+      return;
+    }
+    if (!approve || thread.mode !== 'ask') { draft.setStatus(callId, 'denied'); deny(NOT_ASKED); return; }
     draft.setStatus(callId, 'pending');
     const { decision, cancel } = approve({ callId, name: request.tool_name, tool: request.display_name || request.tool_name, input: request.input, description: request.description, blockedPath: request.blocked_path });
     asking.set(request_id, cancel);
     decision.then(answer => {
       asking.delete(request_id);
       draft.setStatus(callId, answer === 'deny' ? 'denied' : 'running');
-      reply(request_id, { subtype: 'success', response: answer === 'deny' ? { behavior: 'deny', message: DECLINED } : { behavior: 'allow', updatedInput: request.input } });
+      if (answer === 'deny') deny(DECLINED); else allow(request.input);
     });
   };
   let pending = '', stderr = '', failure = null;

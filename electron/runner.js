@@ -10,6 +10,37 @@ const openai = require('./providers/openai');
 
 const UPDATE_MS = 60;
 
+const SKIPPED = 'The user skipped the questions. Continue with your best judgment, or ask in plain text.';
+// API and local models get this tool next to the MCP tools, so any model can ask structured questions.
+const ASK_TOOL = {
+  qualified: 'hanobi__ask_user', server: 'Hanobi', name: 'ask_user',
+  description: 'Ask the user 1 to 4 multiple-choice questions when a decision is theirs to make and you cannot resolve it from context. The user can also type their own answer. Returns the answers, keyed by question text.',
+  inputSchema: { type: 'object', required: ['questions'], properties: { questions: { type: 'array', minItems: 1, maxItems: 4, items: { type: 'object', required: ['question', 'options'], properties: {
+    question: { type: 'string' }, header: { type: 'string', description: 'A label of at most 12 characters.' }, multiSelect: { type: 'boolean' },
+    options: { type: 'array', minItems: 2, maxItems: 4, items: { type: 'object', required: ['label'], properties: { label: { type: 'string' }, description: { type: 'string' } } } }
+  } } } } }
+};
+
+// One question shape for every source: { id, question, header, options: [{ label, description }], multiSelect }.
+function normalizeQuestions(list) {
+  if (!Array.isArray(list)) return [];
+  return list.slice(0, 4).map((q, i) => ({
+    id: String(q?.id ?? i), question: String(q?.question || '').slice(0, 1000), header: String(q?.header || '').slice(0, 40), multiSelect: !!q?.multiSelect,
+    options: (Array.isArray(q?.options) ? q.options : []).slice(0, 8).map(o => ({ label: String(o?.label ?? o).slice(0, 200), description: String(o?.description || '').slice(0, 500) }))
+  })).filter(q => q.question);
+}
+// Every question needs at least one answer; anything else counts as skipped.
+function validAnswers(questions, answers) {
+  if (!answers || typeof answers !== 'object') return null;
+  const out = {};
+  for (const q of questions) {
+    const list = (Array.isArray(answers[q.id]) ? answers[q.id] : []).map(a => String(a).trim().slice(0, 2000)).filter(Boolean);
+    if (!list.length) return null;
+    out[q.id] = q.multiSelect ? list : list.slice(0, 1);
+  }
+  return out;
+}
+
 class Runner {
   constructor({ store, secrets, mcp, send }) {
     Object.assign(this, { store, secrets, mcp, send });
@@ -94,7 +125,7 @@ class Runner {
     const finish = message => {
       clearInterval(ticker);
       this.runs.delete(threadId);
-      for (const [id, entry] of this.approvals) if (entry.threadId === threadId) this.answer(id, 'deny');
+      for (const [id, entry] of this.approvals) if (entry.threadId === threadId) this.answer(id, null);
       const saved = message && this.store.append(threadId, { role: 'assistant', connectionId: thread.connectionId, model: thread.model, ...(draft.suggestions.length ? { suggestions: draft.suggestions } : {}), ...message });
       this.send('thread-changed', { threadId });
       this.send('run-state', { threadId, running: false, error: message?.error });
@@ -107,9 +138,10 @@ class Runner {
       if (preset.kind === 'cli') {
         result = await cli.run({ ...common, preset, history, prompt: text, cwd: workspace.path, mcpServers: this.mcp.enabledConfigs(),
           onSession: id => { if (id !== thread.sessionId) this.store.update(threadId, { sessionId: id, replay: false }); },
-          approve: request => this.ask(threadId, { server: preset.name, ...request }) });
+          approve: request => this.ask(threadId, { server: preset.name, ...request }),
+          question: request => this.question(threadId, { server: preset.name, ...request }) });
       } else {
-        const tools = await this.mcp.tools();
+        const tools = [...await this.mcp.tools(), ASK_TOOL];
         const api = { ...common, apiKey: this.secrets.get(`key:${connection.id}`), system: this.store.data.preferences.systemPrompt || undefined, tools, callTool: this.toolCaller(threadId, tools, draft) };
         result = preset.kind === 'anthropic' ? await anthropic.run(api) : await openai.run({ ...api, baseURL: connection.baseURL || preset.baseURL });
       }
@@ -158,6 +190,15 @@ class Runner {
     const byName = new Map(tools.map(t => [t.qualified, t]));
     return async (callId, name, input) => {
       const tool = byName.get(name);
+      if (tool === ASK_TOOL) {
+        draft.setStatus(callId, 'pending');
+        const questions = normalizeQuestions(input?.questions);
+        if (!questions.length) { const result = { output: 'Give 1 to 4 questions, each with 2 to 4 options.', isError: true }; draft.toolResult(callId, result); return result; }
+        const answers = await this.question(threadId, { callId, server: 'Hanobi', questions }).decision;
+        const result = answers ? { output: JSON.stringify(Object.fromEntries(questions.map(q => [q.question, answers[q.id].join(', ')]))) } : { output: SKIPPED, isError: true };
+        draft.toolResult(callId, result);
+        return result;
+      }
       if (!tool) { const result = { output: `Unknown tool ${name}.`, isError: true }; draft.toolResult(callId, result); return result; }
       if (this.store.thread(threadId).mode !== 'full') {
         draft.setStatus(callId, 'pending');
@@ -184,14 +225,26 @@ class Runner {
     });
     return { decision, cancel: () => this.answer(id, 'deny') };
   }
+  // Questions from the model: Claude Code's AskUserQuestion, Codex user input requests, and the ask_user tool of API runs.
+  // Resolves to { [question id]: [answer, …] }, or null when the user skips or the run ends.
+  question(threadId, { questions, ...request }) {
+    questions = normalizeQuestions(questions);
+    const id = crypto.randomUUID();
+    const decision = new Promise(resolve => {
+      this.approvals.set(id, { threadId, resolve, questions });
+      this.send('question', { id, threadId, questions, ...request });
+    });
+    return { decision, cancel: () => this.answer(id, null) };
+  }
   answer(approvalId, decision) {
     const entry = this.approvals.get(approvalId);
     if (!entry) return;
     this.approvals.delete(approvalId);
     this.send('approval-done', { id: approvalId });
-    entry.resolve(['allow', 'always', 'deny'].includes(decision) ? decision : 'deny');
+    if (entry.questions) entry.resolve(validAnswers(entry.questions, decision));
+    else entry.resolve(['allow', 'always', 'deny'].includes(decision) ? decision : 'deny');
   }
   live() { return Object.fromEntries([...this.runs].map(([id, run]) => [id, run.draft.parts])); }
 }
 
-module.exports = { Runner };
+module.exports = { Runner, ASK_TOOL, normalizeQuestions, validAnswers };

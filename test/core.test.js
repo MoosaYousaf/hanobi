@@ -11,7 +11,7 @@ const { command, apply } = cli;
 const { toProvider, replayPrompt } = require('../electron/providers/transcript');
 const { presets, validateSettings } = require('../electron/providers/catalog');
 const git = require('../electron/git');
-const { Runner } = require('../electron/runner');
+const { Runner, ASK_TOOL, validAnswers } = require('../electron/runner');
 
 const tmp = prefix => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 
@@ -129,6 +129,18 @@ test('Claude Code ask mode: the prompt is a stdin message, and approval prompts 
       assert.equal(draft.parts[0].status, answer === 'allow' ? 'done' : 'denied');
       assert.equal(draft.parts.at(-1).text, answer);
     }
+    const base = { preset: presets['claude-code'], history: [], cwd: home, mcpServers: [], signal: new AbortController().signal, onSession() {} };
+    // AskUserQuestion answers go back in updatedInput.answers, keyed by question text, in every access mode.
+    let draft = new Draft();
+    await cli.run({ ...base, thread: { mode: 'auto', model: '', effort: '' }, prompt: 'ask', draft,
+      approve: () => assert.fail('a question is not an approval'),
+      question: ({ questions }) => { assert.equal(questions[0].question, 'Which database?'); return { decision: Promise.resolve({ 0: ['SQLite'] }), cancel() {} }; } });
+    assert.equal(draft.parts.at(-1).text, '{"Which database?":"SQLite"}');
+    // Outside Ask first, a permission prompt is denied without asking the user.
+    draft = new Draft();
+    await cli.run({ ...base, thread: { mode: 'auto', model: '', effort: '' }, prompt: 'ls', draft, approve: () => assert.fail('not in ask mode'), question() {} });
+    assert.equal(draft.parts[0].status, 'denied');
+    assert.equal(draft.parts.at(-1).text, 'deny');
   } finally { process.env.HOME = savedHome; cli.cliPath('claude', true); }
 });
 
@@ -151,6 +163,12 @@ test('Codex ask mode: app-server approval requests become approvals, and a decli
       assert.equal(draft.parts[0].status, answer === 'allow' ? 'done' : 'denied');
       assert.equal(draft.parts.at(-1).text, answer === 'allow' ? 'accept' : 'decline');
     }
+    const draft = new Draft();
+    await cli.run({ preset: presets.codex, thread: { mode: 'ask', model: '', effort: '' }, history: [], prompt: 'ask', cwd: home, mcpServers: [], draft,
+      signal: new AbortController().signal, onSession() {}, approve: () => assert.fail('not an approval'),
+      question: ({ questions }) => { assert.equal(questions[0].id, 'db'); return { decision: Promise.resolve({ db: ['Postgres'] }), cancel() {} }; } });
+    assert.equal(draft.parts.find(p => p.type === 'tool').status, 'done');
+    assert.equal(draft.parts.at(-1).text, '{"db":{"answers":["Postgres"]}}');
   } finally { process.env.HOME = savedHome; cli.cliPath('codex', true); }
 });
 
@@ -235,4 +253,25 @@ test('rewind restores workspace files from a checkpoint and leaves the real inde
     assert.equal(store.thread(thread.id).replay, true);
     await assert.rejects(runner.rewind(thread.id, store.thread(thread.id).messages[0].id, { code: true }), /no file checkpoint/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('API models ask questions through the ask_user tool; answers must cover every question', async () => {
+  const store = new Store(path.join(tmp('hanobi-q-'), 'data.json'));
+  const thread = store.addThread(store.addWorkspace(tmp('hanobi-qw-')).id, { connectionId: 'x', model: 'm', effort: '', mode: 'ask' });
+  const sent = [];
+  const runner = new Runner({ store, secrets: {}, mcp: {}, send: (channel, value) => {
+    sent.push(channel);
+    if (channel === 'question') setImmediate(() => runner.answer(value.id, { 0: ['Blue', 'ignored for single select'], 1: ['a', 'b'] }));
+  } });
+  const draft = new Draft();
+  draft.tool({ id: 'c1', name: ASK_TOOL.qualified, input: {} });
+  const call = runner.toolCaller(thread.id, [ASK_TOOL], draft);
+  const result = await call('c1', ASK_TOOL.qualified, { questions: [
+    { question: 'Color?', options: [{ label: 'Blue' }, { label: 'Red' }] },
+    { question: 'Extras?', multiSelect: true, options: [{ label: 'a' }, { label: 'b' }] }
+  ] });
+  assert.deepEqual(JSON.parse(result.output), { 'Color?': 'Blue', 'Extras?': 'a, b' });
+  assert.ok(sent.includes('question') && sent.includes('approval-done'));
+  assert.equal(validAnswers([{ id: '0', multiSelect: false }, { id: '1' }], { 0: ['x'] }), null);
+  assert.match((await call('c2', ASK_TOOL.qualified, { questions: [] })).output, /1 to 4 questions/);
 });

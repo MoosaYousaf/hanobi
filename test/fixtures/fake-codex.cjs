@@ -10,6 +10,12 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   else if (m.method === 'thread/start' || m.method === 'thread/resume') {
     if (m.params.approvalPolicy !== 'untrusted') { out({ id: m.id, error: { message: 'expected untrusted' } }); return; }
     out({ id: m.id, result: { thread: { id: m.params.threadId || 'th1' } } });
+  } else if (m.method === 'turn/start' && m.params.input[0].text === 'ask') {
+    out({ id: m.id, result: { turn: { id: 'tu1', status: 'inProgress' } } });
+    out({ id: 'srv2', method: 'item/tool/requestUserInput', params: { ...turn, itemId: 'u1', isBlocking: true, questions: [{ id: 'db', header: 'Database', question: 'Which database?', isOther: true, isSecret: false, options: [{ label: 'Postgres', description: '' }, { label: 'SQLite', description: '' }] }] } });
+  } else if (m.id === 'srv2') {
+    out({ method: 'item/agentMessage/delta', params: { ...turn, itemId: 'm2', delta: JSON.stringify(m.result.answers) } });
+    out({ method: 'turn/completed', params: { threadId: 'th1', turn: { id: 'tu1', status: 'completed', error: null } } });
   } else if (m.method === 'turn/start') {
     out({ id: m.id, result: { turn: { id: 'tu1', status: 'inProgress' } } });
     out({ method: 'item/started', params: { ...turn, item: { type: 'commandExecution', id: 'c1', command: m.params.input[0].text, status: 'inProgress' } } });

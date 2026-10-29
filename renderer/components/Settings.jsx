@@ -250,35 +250,19 @@ function DesktopSection() {
   );
 }
 
-// Whisper's languages that people ask for most. Whisper does not detect the language here, so the user picks one.
+// Languages that Apple speech recognition supports on this Mac without a network. The user picks one.
 const LANGUAGES = [['en', 'English'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['it', 'Italian'], ['pt', 'Portuguese'], ['nl', 'Dutch'],
-  ['ar', 'Arabic'], ['ur', 'Urdu'], ['hi', 'Hindi'], ['bn', 'Bengali'], ['pa', 'Punjabi'], ['fa', 'Persian'], ['tr', 'Turkish'], ['ru', 'Russian'], ['uk', 'Ukrainian'],
-  ['pl', 'Polish'], ['zh', 'Chinese'], ['ja', 'Japanese'], ['ko', 'Korean'], ['vi', 'Vietnamese'], ['id', 'Indonesian'], ['sv', 'Swedish']];
-const mb = bytes => `${Math.round(bytes / 1048576)} MB`;
+  ['ar', 'Arabic'], ['hi', 'Hindi'], ['tr', 'Turkish'], ['ru', 'Russian'], ['uk', 'Ukrainian'], ['pl', 'Polish'], ['zh', 'Chinese'], ['ja', 'Japanese'],
+  ['ko', 'Korean'], ['vi', 'Vietnamese'], ['id', 'Indonesian'], ['sv', 'Swedish']];
 
 function VoiceSection() {
   const voice = useStore(s => s.app.voice);
-  const [models, setModels] = useState([]);
-  const load = () => call('voice:models').then(setModels, toast);
-  useEffect(() => { load(); }, [voice.model]);
   const setVoice = patch => guard(() => call('prefs:set', { voice: patch }))();
-  const remove = guard(async m => {
-    if (!await askConfirm({ title: `Delete the ${m.label} speech model?`, message: `This frees ${mb(m.bytes)}. Voice input downloads it again the next time you use it.`, confirmLabel: 'Delete', danger: true })) return;
-    await call('voice:remove-model', m.id); load();
-  });
   return (
     <>
       <h3>Voice input</h3>
-      <p className="hint">Click the microphone to start and click again to stop, or hold it to talk and release to stop. <kbd>⌘⇧D</kbd> works the same way. Whisper turns speech into text on this Mac; audio never leaves it. The first use downloads the model once.</p>
-      <div className="voice-models">
-        {models.map(m => (
-          <label key={m.id} className={`voice-model ${voice.model === m.id ? 'on' : ''}`}>
-            <input type="radio" name="voice-model" checked={voice.model === m.id} onChange={() => setVoice({ model: m.id })} />
-            <span className="voice-model-text"><strong>{m.label}</strong> <span className="muted">{m.size}</span><span className="hint">{m.note}</span></span>
-            {m.downloaded ? <button type="button" className="btn sm" onClick={e => { e.preventDefault(); remove(m); }}>Delete ({mb(m.bytes)})</button> : <span className="muted voice-model-state">Not downloaded</span>}
-          </label>
-        ))}
-      </div>
+      <p className="hint">Click the microphone to start and click again to stop, or hold it to talk and release to stop. <kbd>⌘⇧D</kbd> works the same way, and Esc cancels. The words show in the message box while you speak. Apple speech recognition runs on this Mac; audio is not sent anywhere. The first use asks for the Speech Recognition permission.</p>
+      {!voice.available ? <p className="hint warn">The speech helper is missing from this copy of Hanobi. Install the Xcode Command Line Tools (xcode-select --install), then run npm run build.</p> : null}
       <label className="field voice-language"><span>Language you speak</span>
         <select className="mini-select" value={voice.language} onChange={e => setVoice({ language: e.target.value })}>
           {LANGUAGES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}

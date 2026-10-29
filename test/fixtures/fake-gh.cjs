@@ -19,5 +19,8 @@ else if (a === 'pr' && b === 'create') {
   state.pr = { number: 12, title, url: 'https://github.com/o/r/pull/12', state: 'OPEN', isDraft: args.includes('--draft'), reviewDecision: 'REVIEW_REQUIRED', headRefName: args[args.indexOf('--head') + 1], baseRefName: base, author: { login: 'me' }, updatedAt: '2026-10-29T00:00:00Z' };
   fs.writeFileSync(process.env.FAKE_GH_STATE, JSON.stringify(state));
   process.stdout.write('Creating pull request for feature into trunk\n\nhttps://github.com/o/r/pull/12\n');
-} else if (a === 'pr' && b === 'checkout') process.stdout.write('Switched\n');
+} else if (a === 'api' && b === '/copilot_internal/user') process.stdout.write(JSON.stringify({ access_type_sku: 'free_limited_copilot', quota_reset_date_utc: '2026-11-01T00:00:00.000Z', quota_snapshots: {
+  chat: { entitlement: 200, remaining: 30, percent_remaining: 15, unlimited: false }, completions: { entitlement: 2000, remaining: 2000, percent_remaining: 100, unlimited: false },
+  premium_interactions: { entitlement: 0, remaining: 0, percent_remaining: 0, unlimited: false } } }));
+else if (a === 'pr' && b === 'checkout') process.stdout.write('Switched\n');
 else { process.stderr.write(`unknown command ${args.join(' ')}\n`); process.exit(2); }

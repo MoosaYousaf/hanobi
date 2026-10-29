@@ -13,7 +13,8 @@ let state = {
   // panes: the threads shown side by side; threadId is the active pane. sizes: pane width fractions.
   ui: { view: null, workspaceId: null, threadId: null, projectId: null, panes: [], sizes: [], focus: false, panel: null, settings: null, sidebar: true },
   toast: null,
-  voice: { state: 'idle' }, // idle | starting | listening | transcribing; threadId, level, progress (model download 0..1)
+  limits: {}, // cli -> plan limits reading (see renderer/limits.js)
+  voice: { state: 'idle' }, // idle | starting | listening | transcribing; threadId, level (0..1)
   dialog: null // { kind: 'text' | 'confirm', title, message, value, confirmLabel, danger, resolve }
 };
 const listeners = new Set();

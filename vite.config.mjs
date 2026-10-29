@@ -5,6 +5,5 @@ export default defineConfig({
   root: 'renderer',
   base: './',
   plugins: [react()],
-  worker: { format: 'es' },
   build: { outDir: '../dist/renderer', emptyOutDir: true, target: 'chrome130' }
 });

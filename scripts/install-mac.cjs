@@ -8,7 +8,7 @@ const run = (cmd, args, options = {}) => execFileSync(cmd, args, { stdio: 'inher
 const root = path.join(__dirname, '..');
 const target = process.env.HANOBI_INSTALL_DIR || '/Applications';
 
-run('npx', ['vite', 'build'], { cwd: root });
+run('npm', ['run', 'build'], { cwd: root });
 run('npx', ['electron-builder', '--mac', 'dir', '--publish', 'never'], { cwd: root });
 const out = path.join(root, 'dist/release');
 const folder = fs.readdirSync(out).find(d => /^mac/.test(d) && fs.existsSync(path.join(out, d, 'Hanobi.app')));

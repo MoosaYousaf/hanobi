@@ -45,9 +45,15 @@ fs.copyFileSync(path.join(__dirname, '../test/fixtures/fake-gh.cjs'), path.join(
 process.env.PATH = `${ghBin}${path.delimiter}${process.env.PATH}`;
 process.env.FAKE_GH_LOG = path.join(ghBin, 'log'); process.env.FAKE_GH_STATE = path.join(ghBin, 'state.json');
 fs.writeFileSync(process.env.FAKE_GH_STATE, JSON.stringify({ pr: { number: 12, title: 'Parse breaking changes from the changelog', url: 'https://github.com/example/hanobi/pull/12', state: 'OPEN', isDraft: false, reviewDecision: 'CHANGES_REQUESTED', headRefName: 'feature/parser', baseRefName: 'main', author: { login: 'me' }, updatedAt: '2026-10-29T00:00:00Z' } }));
+// Fixed plan limits: the session window is fine, the week is near its cap.
+const inHours = h => Date.now() + h * 3600 * 1000;
+process.env.HANOBI_LIMITS_FIXTURE = JSON.stringify({ claude: { plan: 'Claude Pro', windows: [{ id: 'five_hour', label: 'Session (5 hours)', used: 54, resetsAt: inHours(2) }, { id: 'seven_day', label: 'Week', used: 86, resetsAt: inHours(50) }], note: '' } });
+// A fake speech helper streams words without a microphone.
+process.env.HANOBI_SPEECH_HELPER = path.join(__dirname, '../test/fixtures/fake-speech.cjs');
 const { app, BrowserWindow, nativeTheme, dialog, systemPreferences } = require('electron');
-// The microphone answers "denied", so voice input shows its permission message without a macOS prompt.
-systemPreferences.getMediaAccessStatus = () => 'denied';
+// The microphone first answers "denied", so voice input shows its permission message without a macOS prompt.
+let microphone = 'denied';
+systemPreferences.getMediaAccessStatus = () => microphone;
 systemPreferences.askForMediaAccess = async () => false;
 // Save dialogs answer with a fixed path, so downloads run without a person.
 let saveTarget = null;
@@ -84,7 +90,13 @@ app.whenReady().then(async () => {
     await shot(win, '1-home');
     await clickText(win, '.thread-row', 'Parse the release notes');
     await until(win, `document.querySelectorAll('.msg').length === 2 && !!document.querySelector('.prose table')`, 'messages render');
-    await until(win, `document.querySelector('.composer-row .usage-ring')?.dataset.tip === 'Context: 45.2k of 1M tokens (5%)'`, 'usage ring shows the context');
+    await until(win, `document.querySelector('.composer-row .usage-ring')?.getAttribute('aria-label') === 'Session (5 hours): 54% used, 46% left'`, 'usage ring shows the plan session');
+    await until(win, `(() => { const card = document.querySelector('.usage-card')?.textContent || ''; return card.includes('Claude Pro') && card.includes('Week86% used') && card.includes('14% left') && card.includes('Context: 45.2k of 1M tokens (5%)'); })()`, 'usage card shows windows, what is left, and the context');
+    await until(win, `document.querySelector('.composer-row .usage-ring').classList.contains('high') && document.querySelector('.limit-warn')?.textContent === 'Week: 14% left'`, 'a window near its cap warns');
+    await until(win, `/near the usage limit/.test(document.querySelector('.toast')?.textContent || '')`, 'a toast warns once near the cap');
+    await win.webContents.executeJavaScript(`document.querySelector('.usage-card').style.display = 'flex'`);
+    await shot(win, '1a-usage');
+    await win.webContents.executeJavaScript(`document.querySelector('.usage-card').style.display = ''`);
     await clickText(win, '.suggestion', 'Show the migration steps');
     await until(win, `document.querySelector('.composer textarea, textarea').value === 'Show the migration steps'`, 'a suggestion fills the composer');
     await win.webContents.executeJavaScript(`(() => { const t = document.querySelector('.composer textarea, textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, ''); t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
@@ -140,6 +152,13 @@ app.whenReady().then(async () => {
     saveTarget = null;
     await win.webContents.executeJavaScript(`(() => { const b = document.querySelector('.composer-row .icon-btn.mic'); b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 })); b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 })); })()`);
     await until(win, `(document.querySelector('.toast')?.textContent || '').includes('Privacy & Security → Microphone') && !document.querySelector('.icon-btn.mic.live')`, 'voice input explains a denied microphone');
+    microphone = 'granted';
+    await win.webContents.executeJavaScript(`(() => { const t = document.querySelector('.composer textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, 'Note:'); t.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('.composer-row .icon-btn.mic').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 })); document.querySelector('.composer-row .icon-btn.mic').dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 })); })()`);
+    await until(win, `!!document.querySelector('.icon-btn.mic.live') && document.querySelector('.composer textarea').value === 'Note: hello from en-US' && /words show as you speak/.test(document.querySelector('.voice-status')?.textContent)`, 'spoken words show in the composer while listening');
+    await shot(win, '11-voice');
+    await win.webContents.executeJavaScript(`(() => { const b = document.querySelector('.composer-row .icon-btn.mic.live'); b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 })); b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 })); })()`);
+    await until(win, `!document.querySelector('.icon-btn.mic.live') && !document.querySelector('.voice-status') && document.querySelector('.composer textarea').value === 'Note: Hello from en-US.'`, 'the final text replaces the partial text');
+    await win.webContents.executeJavaScript(`(() => { const t = document.querySelector('.composer textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, ''); t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
     await clickText(win, '.thread-row', 'Parse the release notes');
     await click(win, '.new-chat');
     await until(win, `!!document.querySelector('.composer textarea')`, 'composer renders');
@@ -166,7 +185,7 @@ app.whenReady().then(async () => {
     await until(win, `document.documentElement.dataset.palette === 'gemini' && getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() !== ''`, 'palette applies');
     await shot(win, '5-theme');
     await until(win, `[...document.querySelectorAll('.settings .shortcut-row')].map(r => r.textContent).join('|').match(/Show Hanobi from any app.*⌥ Space.*\\|Hanobi 0\\.\\d+\\.\\d+.*Check now/) !== null`, 'desktop settings show the shortcut and the version');
-    await until(win, `[...document.querySelectorAll('.settings .voice-model strong')].map(e => e.textContent).join() === 'Tiny,Base,Small' && document.querySelectorAll('.settings .voice-model.on').length === 1 && document.querySelector('.voice-language select').value === 'en'`, 'voice settings list the models and the language');
+    await until(win, `document.querySelector('.voice-language select')?.value === 'en' && !document.querySelector('.settings .hint.warn')`, 'voice settings show the language and a ready helper');
     await clickText(win, '.settings .shortcut-row .btn', 'Turn off');
     await until(win, `[...document.querySelectorAll('.settings .shortcut-row .btn.shortcut')][0]?.textContent === 'Off'`, 'the shortcut turns off');
     await clickText(win, '.settings .shortcut-row .btn', 'Use ⌥ Space');
@@ -242,7 +261,7 @@ app.whenReady().then(async () => {
     })()`);
     await until(win, `(${JSON.stringify(listed)}).at(-1) === [...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row .thread-title')][0].textContent`, 'dragging a conversation reorders the list');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, preview, and isolated Run, file cards, reply export to PDF and Word, desktop settings, voice input controls.\n');
+    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, preview, and isolated Run, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
     app.exit(0);
   } catch (error) {
     if (errors.length) console.error('Console errors:\n' + errors.join('\n')); process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }

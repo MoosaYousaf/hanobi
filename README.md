@@ -32,7 +32,7 @@ Hanobi runs on macOS 12 Monterey and later, including Intel Macs. It pins Electr
   - API and local models can make files with the `hanobi__write_file` tool: text formats, `.html`, `.docx`, `.rtf`, `.odt`, and `.pdf`.
   - File cards show files you attach, files the model makes, and files a CLI agent writes. Each card has **Preview** (Quick Look), **Copy** (text, image, or the file itself), **Download**, **Open with default app**, and **Show in Finder**.
   - **Download** on a reply saves it as Markdown, Word, or PDF.
-- Voice input: click the microphone to start and click again to stop, or hold it to talk and release to stop. **⌘⇧D** works the same way, and Esc cancels. The text goes into the composer, so you can check it before you send. Whisper runs on this Mac (WebAssembly), so audio never leaves it. The first use downloads the model once from Hugging Face: Tiny (45 MB, the default on Intel Macs), Base (80 MB, the default on Apple Silicon), or Small (250 MB). Choose the model and the language you speak in **Settings → General**. macOS asks once for microphone access.
+- Voice input: click the microphone to start and click again to stop, or hold it to talk and release to stop. **⌘⇧D** works the same way, and Esc cancels. The words show in the composer while you speak, so you can check them before you send. Apple speech recognition runs on this Mac (on-device only), so audio never leaves it. Choose the language you speak in **Settings → General**. macOS asks once for microphone access and once for Speech Recognition.
 - Desktop app:
   - Notifications, a Dock badge, and a Dock bounce when a reply finishes or needs your approval while Hanobi is in the background. Click a notification to open the conversation.
   - **⌥ Space** shows Hanobi from any app and hides it again. Change or turn off the shortcut in **Settings → General**.
@@ -46,7 +46,7 @@ Hanobi runs on macOS 12 Monterey and later, including Intel Macs. It pins Electr
 - Split panes: up to four conversations side by side, each with its own model. Drag a divider to resize; double-click it to make the panes equal (`⌘D` opens a new pane).
 - Drag a conversation in the sidebar to change its place in the list (or press `⌥↑` / `⌥↓` on a selected row). A moved list keeps its order; new conversations appear on top.
 - Focus mode (`⇧⌘F`): one conversation edge to edge in full screen, in a terminal layout: monospace text, prompt and reply both left to right. `Esc` leaves focus mode and keeps full screen.
-- Context usage ring next to the model: how full the model's context was after the last reply, for every model that reports tokens. Claude Code, Codex, and Copilot report the context size; for API models the size comes from a table (Claude) or is unknown.
+- Usage ring next to the model. For Claude Code, Codex, and Copilot it shows your plan's usage: the ring fills with the current session window (5 hours for Claude and Codex, the month for Copilot). Hover over it to see every window (session, week, monthly requests), how much is left, when each one resets, and the context size of the last reply. At 80% of any window the ring turns amber, a short "Week: 14% left" note shows next to it, and a message warns you once; at 95% it turns red. These numbers come from free sources: Claude Code's sign-in, Codex's session logs, and `gh`. For API and local models the ring shows how full the context was after the last reply.
 - Message actions on hover: Copy, Edit, Rewind, and Branch. Edit replaces the message and the replies after it.
 - Multiple windows and keyboard shortcuts (`⌘N`, `⌘D`, `⇧⌘F`, `⌘,`, `⌘\`).
 
@@ -56,6 +56,8 @@ Hanobi runs on macOS 12 Monterey and later, including Intel Macs. It pins Electr
 npm install
 npm run install:mac
 ```
+
+Voice input needs the Xcode Command Line Tools (`xcode-select --install`) to build its small Swift helper. Without them, everything else works.
 
 This builds Hanobi and puts it in `/Applications`. Open it from Spotlight, Launchpad, or the Dock like any other app. To update, run `git pull`, then `npm run install:mac` again. Your conversations and settings stay. The app is free and has no Apple developer signature, so macOS may ask once for Keychain access to Hanobi's saved keys. Click **Always Allow**.
 

@@ -54,4 +54,4 @@ function fromSession(cli, sessionId) {
   try { return cli === 'codex' ? codex(sessionId) : cli === 'copilot' ? copilot(sessionId) : null; } catch { return null; }
 }
 
-module.exports = { contextWindow, fromSession, codex, copilot };
+module.exports = { contextWindow, fromSession, codex, copilot, tail, lastMatch };

@@ -4,6 +4,7 @@ import { useStore, getState, call, guard, toast, askConfirm } from '../store.js'
 import { startVoice, stopVoice, cancelVoice } from '../voice/voice.js';
 import { ModelPicker } from './ModelPicker.jsx';
 import { formatSize } from './Files.jsx';
+import { useLimits, refreshLimits, level, leftText, resetText, WARN } from '../limits.js';
 
 const MAX_IMAGE = 5 * 1024 * 1024; // the API limit for one image
 const MAX_FILES = 10;
@@ -17,21 +18,49 @@ const readData = file => new Promise((resolve, reject) => {
 const tokens = n => (n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${+(n / 1000).toFixed(1)}k` : String(n));
 const cap = text => text.charAt(0).toUpperCase() + text.slice(1);
 
-// How full the model's context was after the last reply. Providers report the tokens; the size comes from the provider or a table.
-function UsageRing({ thread }) {
+// The plan's usage windows for CLI subscriptions: the ring shows the session window (the shortest one) and turns
+// amber at 80% and red at 95% of any window. The hover card shows every window, what is left, the resets, and the context size.
+// API and local models have no plan limits, so their ring shows how full the context was after the last reply.
+const ago = ms => { const m = Math.round((Date.now() - ms) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
+function UsageRing({ thread, preset }) {
+  const cli = preset?.cli || null;
+  const limits = useLimits(thread.connectionId, cli);
   const usage = thread.messages.findLast(m => m.role === 'assistant' && m.usage)?.usage;
-  const share = usage?.window ? Math.min(1, usage.used / usage.window) : 0;
-  const tip = !usage ? 'Context usage shows after the first reply.'
-    : usage.window ? `Context: ${tokens(usage.used)} of ${tokens(usage.window)} tokens (${Math.round(share * 100)}%)`
+  const contextShare = usage?.window ? Math.min(1, usage.used / usage.window) : 0;
+  const context = !usage ? 'Context: shows after the first reply.'
+    : usage.window ? `Context: ${tokens(usage.used)} of ${tokens(usage.window)} tokens (${Math.round(contextShare * 100)}%)`
     : `Context: ${tokens(usage.used)} tokens. This model does not report its context size.`;
+  const windows = limits?.windows || [];
+  const session = windows[0];
+  const share = session ? session.used / 100 : contextShare;
+  const tone = level(windows.length ? Math.max(...windows.map(w => w.used)) : contextShare * 100);
+  const nearest = windows.filter(w => w.used >= WARN).sort((a, b) => b.used - a.used)[0];
+  const label = session ? `${session.label}: ${session.used}% used, ${leftText(session)}` : context;
   const r = 6.5, length = 2 * Math.PI * r;
   return (
-    <span className={`usage-ring tip tip-end ${share >= 0.95 ? 'full' : share >= 0.8 ? 'high' : ''}`} data-tip={tip} aria-label={tip} role="img" tabIndex={0}>
-      <svg width="18" height="18" viewBox="0 0 18 18">
-        <circle cx="9" cy="9" r={r} className="usage-track" />
-        {share ? <circle cx="9" cy="9" r={r} className="usage-fill" strokeDasharray={`${share * length} ${length}`} transform="rotate(-90 9 9)" /> : null}
-      </svg>
-    </span>
+    <>
+      {nearest ? <span className={`limit-warn ${level(nearest.used)}`}>{nearest.label.replace(/ \(.*\)$/, '')}: {leftText(nearest)}</span> : null}
+      <span className={`usage-ring ${tone}`} aria-label={label} role="img" tabIndex={0} onMouseEnter={() => cli && refreshLimits(thread.connectionId, cli)}>
+        <svg width="18" height="18" viewBox="0 0 18 18">
+          <circle cx="9" cy="9" r={r} className="usage-track" />
+          {share ? <circle cx="9" cy="9" r={r} className="usage-fill" strokeDasharray={`${share * length} ${length}`} transform="rotate(-90 9 9)" /> : null}
+        </svg>
+        <span className="usage-card" role="tooltip">
+          {limits?.plan ? <span className="usage-plan">{limits.plan}</span> : cli && !limits ? <span className="usage-misc">Reading plan usage…</span> : null}
+          {windows.map(w => (
+            <span key={w.id} className="usage-row">
+              <span className="usage-head"><span>{w.label}</span><span>{w.used}% used</span></span>
+              <span className={`usage-bar ${level(w.used)}`}><i style={{ width: `${w.used}%` }} /></span>
+              <span className="usage-foot">{leftText(w)}{w.resetsAt ? ` · ${resetText(w.resetsAt)}` : ''}</span>
+            </span>
+          ))}
+          {limits?.error ? <span className="usage-error">{limits.error}</span> : null}
+          <span className="usage-misc">{context}</span>
+          {limits?.note ? <span className="usage-misc">{limits.note}</span> : null}
+          {limits?.at ? <span className="usage-misc">Updated {ago(limits.at)}</span> : null}
+        </span>
+      </span>
+    </>
   );
 }
 
@@ -68,7 +97,7 @@ function MicButton({ threadId }) {
   const mine = voice.threadId === threadId;
   const listening = mine && voice.state === 'listening';
   const busy = mine && (voice.state === 'transcribing' || voice.state === 'starting');
-  const label = listening ? 'Stop and transcribe (click, or release when holding)' : busy ? 'Transcribing…' : 'Voice input: click to start, or hold to talk (⌘⇧D)';
+  const label = listening ? 'Stop (click, or release when holding)' : busy ? 'Finishing…' : 'Voice input: click to start, or hold to talk (⌘⇧D)';
   return (
     <button className={`icon-btn mic tip ${listening ? 'live' : ''} ${busy ? 'busy' : ''}`} data-tip={label} aria-label={label} aria-pressed={listening}
       disabled={voice.state !== 'idle' && !mine}
@@ -83,9 +112,8 @@ function MicButton({ threadId }) {
 function VoiceStatus({ threadId }) {
   const voice = useStore(s => s.voice);
   if (voice.threadId !== threadId || voice.state === 'idle') return null;
-  const text = voice.state === 'listening' ? 'Listening… click the mic or release to finish. Esc cancels.'
-    : voice.progress !== undefined && voice.progress < 1 ? `Downloading the speech model, one time: ${Math.round(voice.progress * 100)}%`
-    : voice.state === 'starting' ? 'Starting the microphone…' : voice.loading ? 'Loading the speech model, then transcribing on this Mac…' : 'Transcribing on this Mac…';
+  const text = voice.state === 'listening' ? 'Listening… the words show as you speak. Click the mic or release to finish. Esc cancels.'
+    : voice.state === 'starting' ? 'Starting the microphone…' : 'Finishing the text…';
   return <div className="voice-status" role="status">{text}</div>;
 }
 
@@ -175,7 +203,7 @@ export function Composer({ thread, workspace, modelLabel }) {
             {preset.efforts.map(e => <option key={e} value={e}>{e ? cap(e) : 'Default effort'}</option>)}
           </select>
         ) : null}
-        <UsageRing thread={thread} />
+        <UsageRing thread={thread} preset={preset} />
       </div>
     </div>
   );

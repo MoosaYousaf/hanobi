@@ -5,18 +5,17 @@
   "description": "A lightweight desktop harness for any LLM: subscriptions, API keys, local models, and MCP connectors. Runs on macOS 12+.",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "vite build --watch & electron .",
-    "build": "vite build",
-    "start": "vite build && electron .",
+    "dev": "node scripts/build-speech.cjs && (vite build --watch & electron .)",
+    "build": "node scripts/build-speech.cjs && vite build",
+    "start": "npm run build && electron .",
     "test": "node --test test/*.test.js",
-    "smoke": "vite build && electron scripts/smoke.cjs",
+    "smoke": "npm run build && electron scripts/smoke.cjs",
     "icons": "electron scripts/render-icons.cjs",
-    "package:mac": "vite build && electron-builder --mac dmg zip",
-    "package:mac:release": "vite build && electron-builder --mac dmg zip -c.mac.forceCodeSigning=true",
+    "package:mac": "npm run build && electron-builder --mac dmg zip",
+    "package:mac:release": "npm run build && electron-builder --mac dmg zip -c.mac.forceCodeSigning=true",
     "install:mac": "node scripts/install-mac.cjs"
   },
   "devDependencies": {
-    "@huggingface/transformers": "4.3.2",
     "@vitejs/plugin-react": "6.1.2",
     "electron": "40.3.0",
     "electron-builder": "26.0.12",
@@ -46,14 +45,21 @@
         "NSDownloadsFolderUsageDescription": "Hanobi accesses project folders you choose in Downloads so your coding agent can read and edit their files.",
         "NSDocumentsFolderUsageDescription": "Hanobi accesses project folders you choose in Documents so your coding agent can read and edit their files.",
         "NSDesktopFolderUsageDescription": "Hanobi accesses project folders you choose on Desktop so your coding agent can read and edit their files.",
-        "NSMicrophoneUsageDescription": "Hanobi uses the microphone for voice input. Speech is turned into text on this Mac and is not sent anywhere."
+        "NSMicrophoneUsageDescription": "Hanobi uses the microphone for voice input. Speech is turned into text on this Mac and is not sent anywhere.",
+        "NSSpeechRecognitionUsageDescription": "Hanobi turns your speech into text on this Mac for voice input. Audio is not sent anywhere."
       },
       "icon": "build/icon.icns"
     },
     "directories": {
       "buildResources": "build",
       "output": "dist/release"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "dist/native/hanobi-speech",
+        "to": "hanobi-speech"
+      }
+    ]
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.3.0",

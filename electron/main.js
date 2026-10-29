@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, safeStorage, nativeTheme, clipboard, nativeImage, Notification, globalShortcut, screen, session, protocol, systemPreferences } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, safeStorage, nativeTheme, clipboard, nativeImage, Notification, globalShortcut, screen, session, systemPreferences } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -15,25 +15,31 @@ const { cliPath } = require('./providers/cli');
 const git = require('./git');
 const github = require('./github');
 const { Files, safeName, mediaType } = require('./files');
-const { Models, MODELS, DEFAULT_MODEL } = require('./models');
+const { Speech, localeFor } = require('./speech');
 const { skills } = require('./skills');
 const desktop = require('./desktop');
+const { Limits } = require('./limits');
 // From package.json, not from Electron: a script started with `electron <file>` reports Electron's version.
 const VERSION = require('../package.json').version;
 
 app.setName('Hanobi');
 // Tests and smoke runs use a throwaway data folder.
 if (process.env.HANOBI_USER_DATA) app.setPath('userData', process.env.HANOBI_USER_DATA);
-// The Whisper worker loads model files from this scheme; main serves them from the model cache.
-protocol.registerSchemesAsPrivileged([{ scheme: 'hanobi-model', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }]);
 // One Hanobi at a time: a second launch shows the open window.
 if (!app.requestSingleInstanceLock()) app.quit();
 const windows = new Set();
-let store, secrets, mcp, runner, files, models, attention, update = null, shortcutError = '';
+let store, secrets, mcp, runner, files, speech, limits, attention, update = null, shortcutError = '';
 
 function send(channel, value) {
   for (const win of windows) if (!win.isDestroyed()) win.webContents.send(channel, value);
   if (attention) noticeFor(channel, value);
+  // A finished turn used part of the plan, so its limits are read again.
+  if (channel === 'run-state' && !value.running) { const cli = cliOf(store.data.threads.find(t => t.id === value.threadId)?.connectionId); if (cli) limits.get(cli, { force: true }); }
+}
+// The CLI of a connection when Hanobi can read its plan limits, else null.
+function cliOf(connectionId) {
+  const preset = presets[connectionId] || presets[store.data.connections.find(c => c.id === connectionId)?.preset];
+  return preset?.kind === 'cli' && limits.supports(preset.cli) ? preset.cli : null;
 }
 // A reply that ends, or a request that waits, while Hanobi is in the background gets a notification.
 function noticeFor(channel, value) {
@@ -104,8 +110,8 @@ function state() {
     ...summary,
     mcpServers: summary.mcpServers.map(s => { const secret = secrets.get(`mcp:${s.id}`) || {}; return { ...s, envKeys: Object.keys(secret.env || {}), headerKeys: Object.keys(secret.headers || {}) }; }),
     connections: runner.connections(),
-    presets: Object.fromEntries(Object.entries(presets).map(([id, p]) => [id, { name: p.name, kind: p.kind, route: p.route, needsKey: !!p.needsKey, baseURL: p.baseURL || '', efforts: p.efforts, keyUrl: p.keyUrl || '', note: p.note || '', customModels: !!p.customModels, asks: !!p.asks, ...(p.kind === 'cli' ? { models: p.models } : {}) }])),
-    voice: { model: MODELS[store.data.preferences.voice?.model] ? store.data.preferences.voice.model : DEFAULT_MODEL, language: store.data.preferences.voice?.language || 'en', models: MODELS },
+    presets: Object.fromEntries(Object.entries(presets).map(([id, p]) => [id, { name: p.name, kind: p.kind, route: p.route, needsKey: !!p.needsKey, baseURL: p.baseURL || '', efforts: p.efforts, keyUrl: p.keyUrl || '', note: p.note || '', customModels: !!p.customModels, asks: !!p.asks, ...(p.kind === 'cli' ? { models: p.models, cli: p.cli } : {}) }])),
+    voice: { language: store.data.preferences.voice?.language || 'en', available: speech.available() },
     desktop: { version: VERSION, packaged: app.isPackaged, openAtLogin: app.isPackaged && app.getLoginItemSettings().openAtLogin, shortcut: store.data.preferences.shortcut ?? desktop.DEFAULT_SHORTCUT, shortcutError, notify: store.data.preferences.notify !== false, update },
     modes, mcpStatus: mcp.statuses(), running: Object.keys(runner.live()), warning: store.warning, secretsAvailable: secrets.available()
   };
@@ -292,7 +298,7 @@ const handlers = {
     if ('notify' in patch) store.data.preferences.notify = !!patch.notify;
     if ('voice' in patch) {
       const voice = { ...(store.data.preferences.voice || {}), ...patch.voice };
-      store.data.preferences.voice = { model: MODELS[voice.model] ? voice.model : DEFAULT_MODEL, language: /^[a-z]{2,3}$/.test(voice.language || '') ? voice.language : 'en' };
+      store.data.preferences.voice = { language: /^[a-z]{2,3}$/.test(voice.language || '') ? voice.language : 'en' };
     }
     if ('shortcut' in patch) { store.data.preferences.shortcut = String(patch.shortcut || '').slice(0, 60); registerShortcut(); }
     // A login item for the development Electron binary would start Electron, not Hanobi.
@@ -358,9 +364,16 @@ const handlers = {
   'snippet:run': (html, title) => { runHtml(html, title); },
   'files:run': async (threadId, file) => { const full = await threadFile(threadId, file); if (!/\.html?$/i.test(full)) throw new Error('Only HTML files can run.'); runHtml(fs.readFileSync(full, 'utf8'), path.basename(full)); },
   // macOS asks once for the microphone. Returns false when the user said no.
-  'voice:permission': async () => process.platform !== 'darwin' || systemPreferences.getMediaAccessStatus('microphone') === 'granted' || systemPreferences.askForMediaAccess('microphone'),
-  'voice:models': () => models.list(),
-  'voice:remove-model': async id => { await models.remove(id); changed(); },
+  // The helper asks macOS for speech permission itself; the microphone permission belongs to Hanobi.
+  'voice:start': async () => {
+    const mic = process.platform !== 'darwin' || systemPreferences.getMediaAccessStatus('microphone') === 'granted' || await systemPreferences.askForMediaAccess('microphone');
+    if (!mic) throw new Error('Hanobi cannot use the microphone. Allow it in System Settings → Privacy & Security → Microphone.');
+    await speech.start(localeFor(store.data.preferences.voice?.language || 'en', app.getSystemLocale()));
+  },
+  'voice:stop': () => speech.stop(),
+  'voice:cancel': () => speech.cancel(),
+  // Plan limits of the conversation's CLI subscription, or null for API and local models.
+  'limits:get': (connectionId, force) => { const cli = cliOf(connectionId); return cli ? limits.get(cli, { force: !!force }) : null; },
   'update:check': () => checkUpdate(),
   'update:open': () => { if (update?.url && /^https:\/\/github\.com\//.test(update.url)) return shell.openExternal(update.url); },
   'open:external': url => { if (/^https:\/\//.test(url)) return shell.openExternal(url); },
@@ -373,13 +386,15 @@ app.whenReady().then(() => {
   secrets = new Secrets(path.join(app.getPath('userData'), 'hanobi-secrets.json'), safeStorage);
   mcp = new Mcp({ store, secrets, openExternal: url => shell.openExternal(url), onChange: changed });
   files = new Files(path.join(app.getPath('userData'), 'Files'), { printPdf });
-  // Only real network downloads report progress; files from the cache do not.
-  models = new Models(path.join(app.getPath('userData'), 'Models'), { onProgress: p => send('voice-download', p) });
-  protocol.handle('hanobi-model', request => models.handle(request));
-  // Only Hanobi's own windows may use the microphone, and only for audio. Run windows have their own session.
-  const own = wc => [...windows].some(w => !w.isDestroyed() && w.webContents === wc);
-  session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => callback(permission === 'media' && own(wc) && (details.mediaTypes || []).every(t => t === 'audio')));
-  session.defaultSession.setPermissionCheckHandler((wc, permission) => permission === 'media' && !!wc && own(wc));
+  speech = new Speech({ helper: process.env.HANOBI_SPEECH_HELPER || (app.isPackaged ? path.join(process.resourcesPath, 'hanobi-speech') : path.join(__dirname, '../dist/native/hanobi-speech')), onEvent: event => send('voice', event) });
+  // Earlier versions kept Whisper models here for voice input; Apple speech recognition needs none.
+  fs.rm(path.join(app.getPath('userData'), 'Models'), { recursive: true, force: true }, () => {});
+  // Pages get no device permissions: the speech helper records the microphone, not the renderer.
+  session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+  session.defaultSession.setPermissionCheckHandler(() => false);
+  // Smoke runs give fixed readings instead of the user's real accounts.
+  const fixture = process.env.HANOBI_LIMITS_FIXTURE ? JSON.parse(process.env.HANOBI_LIMITS_FIXTURE) : null;
+  limits = new Limits({ cliPath, ...(fixture ? { sources: Object.fromEntries(Object.entries(fixture).map(([cli, reading]) => [cli, async () => reading])) } : {}), onChange: (cli, reading) => send('limits', { cli, ...reading }) });
   runner = new Runner({ store, secrets, mcp, send, files });
   nativeTheme.themeSource = ['light', 'dark'].includes(store.data.preferences.theme) ? store.data.preferences.theme : 'system';
   // A general folder for chats that do not belong to a project.
@@ -409,4 +424,4 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('will-quit', () => globalShortcut.unregisterAll());
-app.on('before-quit', () => { runner?.stopAll(); mcp?.closeAll(); store?.flush(); });
+app.on('before-quit', () => { speech?.cancel(); runner?.stopAll(); mcp?.closeAll(); store?.flush(); });

@@ -54,7 +54,7 @@ export function ProjectView({ projectId }) {
                     <button className="icon-btn sm" title={`Remove ${f.name}`} onClick={removeFile(f.name)}><X size={13} /></button></li>
                 ))}
               </ul>
-            ) : <p className="hint">No documents yet. API and local models get the text of text documents. CLI agents open any document, including PDFs, from the project folder.</p>}
+            ) : <p className="hint">No documents yet. API and local models get the text of text, PDF, Word, PowerPoint, and Excel documents. CLI agents open any document from the project folder.</p>}
           </section>
           <section className="project-section">
             <h3>Chats</h3>

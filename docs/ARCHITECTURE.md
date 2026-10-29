@@ -23,6 +23,7 @@ electron/main.js
   ├─ mcp.js            MCP clients (stdio, Streamable HTTP, OAuth with a loopback redirect)
   ├─ git.js            async git with porcelain v2 -z, run from the repository root; checkpoints through a private index
   ├─ projects.js       project folders: instructions files, knowledge/ documents, API context
+  ├─ extract.js        document text (PDF, Word, RTF, ODT, PowerPoint, Excel) with macOS tools, cached in knowledge/.text/
   ├─ suggest.js        suggested-replies prompt and parsing
   └─ skills.js         read-only skill discovery
 ```
@@ -39,7 +40,7 @@ Adapters write into a `Draft`. The runner sends the draft parts to the renderer 
 
 ## Workspaces
 
-A workspace has a `kind`. `code` is a folder the user added. `chats` is the general Chats folder in the app data. `project` is an app-owned folder under `Projects/`, with `instructions`, a `knowledge/` folder, and generated `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md`. Chats and projects are not code: CLI agents run with read-only tools, the access mode does not apply, and runs make no checkpoints. API runs in a project add `projects.apiContext()` to the system prompt.
+A workspace has a `kind`. `code` is a folder the user added. `chats` is the general Chats folder in the app data. `project` is an app-owned folder under `Projects/`, with `instructions`, a `knowledge/` folder, and generated `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md`. Chats and projects are not code: CLI agents run with read-only tools, the access mode does not apply, and runs make no checkpoints. API runs in a project add `projects.apiContext()` to the system prompt. It gets document text from `extract.js`: PDFKit through JXA (`osascript`), `textutil`, and `unzip` for PowerPoint and Excel XML. The text is cached in `knowledge/.text/` and made again when the document changes.
 
 ## Checkpoints and rewind
 

@@ -1,13 +1,14 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { cachedText } = require('./extract');
 
 // A project is a chat workspace in an app-owned folder: instructions, a knowledge/ folder of documents, and its own chats.
 // CLI agents run in that folder with read-only tools. They read the instructions from CLAUDE.md, AGENTS.md, and GEMINI.md,
-// and open the documents themselves. API and local models get the instructions and the text documents in the system prompt.
+// and open the documents themselves. API and local models get the instructions and the document text in the system prompt.
+// PDF, Word, RTF, OpenDocument, PowerPoint, and Excel documents are converted to text by extract.js.
 const CONTEXT_FILES = ['CLAUDE.md', 'AGENTS.md', 'GEMINI.md'];
 const MAX_FILE = 50 * 1024 * 1024;
 const PROMPT_BUDGET = 400000; // characters of document text for API models
-const TEXT = /\.(txt|md|markdown|csv|tsv|json|jsonl|ya?ml|toml|xml|html?|css|js|jsx|ts|tsx|py|rb|go|rs|java|kt|swift|c|h|cc|cpp|hpp|cs|php|sh|sql|ini|cfg|log|tex|rst|org)$/i;
 
 const knowledge = project => path.join(project.path, 'knowledge');
 
@@ -51,16 +52,22 @@ function addFiles(project, sources) {
 function removeFile(project, name) {
   if (typeof name !== 'string' || name !== path.basename(name) || name.startsWith('.')) throw new Error('Invalid file name.');
   fs.rmSync(path.join(knowledge(project), name), { force: true });
+  fs.rmSync(path.join(knowledge(project), '.text', `${name}.txt`), { force: true });
 }
 
-// The system prompt part for API and local models. Documents that are not text are listed by name only.
-function apiContext(project) {
+// Converts new documents in the background, so the first API run does not wait for them.
+function warm(project, names) {
+  for (const name of names) cachedText(knowledge(project), name).catch(() => {});
+}
+
+// The system prompt part for API and local models. Documents without text (images, scans, unknown types) are listed by name only.
+async function apiContext(project) {
   const parts = [contextText(project).replace('Read the ones that are relevant to the request before you answer.', 'Their text follows.')];
   let budget = PROMPT_BUDGET;
   const other = [];
   for (const file of files(project)) {
-    if (!TEXT.test(file.name) || budget <= 0) { other.push(file.name); continue; }
-    const text = fs.readFileSync(path.join(knowledge(project), file.name), 'utf8').slice(0, budget);
+    const text = budget > 0 ? (await cachedText(knowledge(project), file.name).catch(() => null))?.slice(0, budget) : null;
+    if (!text?.trim()) { other.push(file.name); continue; }
     budget -= text.length;
     parts.push(`<document name="${file.name}">\n${text}\n</document>`);
   }
@@ -68,4 +75,4 @@ function apiContext(project) {
   return parts.join('\n\n');
 }
 
-module.exports = { writeContext, files, addFiles, removeFile, apiContext, contextText };
+module.exports = { writeContext, files, addFiles, removeFile, warm, apiContext, contextText };

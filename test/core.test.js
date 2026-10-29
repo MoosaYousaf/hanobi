@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { spawnSync, execFileSync } = require('node:child_process');
 const { Store, migrate } = require('../electron/store');
 const { Draft } = require('../electron/draft');
 const acp = require('../electron/providers/copilot-acp');
@@ -305,7 +305,7 @@ test('API models ask questions through the ask_user tool; answers must cover eve
   assert.match((await call('c2', ASK_TOOL.qualified, { questions: [] })).output, /1 to 4 questions/);
 });
 
-test('projects: instructions files for CLIs, documents, and the API context', () => {
+test('projects: instructions files for CLIs, documents, and the API context', async () => {
   const projects = require('../electron/projects');
   const project = { id: 'p', kind: 'project', name: 'Contracts', path: tmp('hanobi-project-'), instructions: 'Answer in plain language.' };
   projects.writeContext(project);
@@ -315,17 +315,58 @@ test('projects: instructions files for CLIs, documents, and the API context', ()
   fs.writeFileSync(path.join(src, 'scan.pdf'), '%PDF-1.7');
   assert.deepEqual(projects.addFiles(project, [path.join(src, 'terms.md'), path.join(src, 'scan.pdf'), path.join(src, 'terms.md')]), ['terms.md', 'scan.pdf', 'terms 2.md']);
   assert.deepEqual(projects.files(project).map(f => f.name), ['scan.pdf', 'terms 2.md', 'terms.md']);
-  const context = projects.apiContext(project);
+  const context = await projects.apiContext(project);
   assert.match(context, /<document name="terms.md">\nNet 30 payment\.\n<\/document>/);
   assert.match(context, /not included as text: scan\.pdf/);
   assert.throws(() => projects.removeFile(project, '../CLAUDE.md'), /Invalid/);
   projects.removeFile(project, 'terms 2.md');
   assert.equal(projects.files(project).length, 2);
+  // PDF, Word, PowerPoint, and Excel text goes into the API context; the cache goes with the document.
+  if (process.platform === 'darwin') {
+    officeFixtures(src);
+    projects.addFiles(project, ['quote.pdf', 'memo.docx', 'deck.pptx', 'rates.xlsx'].map(n => path.join(src, n)));
+    const office = await projects.apiContext(project);
+    assert.match(office, /<document name="quote.pdf">\n\[Page 1\]\nTotal due 4200\n<\/document>/);
+    assert.match(office, /<document name="memo.docx">\nShip on Friday\.\n<\/document>/);
+    assert.match(office, /\[Slide 1\]\nQ3 plan\nHire two & ship[\s\S]*\[Slide 2\]\nRisks/);
+    assert.match(office, /\[Sheet: Rates\]\nRegion\tRate\nNorth\t12\.5/);
+    assert.ok(fs.existsSync(path.join(project.path, 'knowledge', '.text', 'quote.pdf.txt')));
+    assert.ok(!projects.files(project).some(f => f.name.startsWith('.')));
+    projects.removeFile(project, 'quote.pdf');
+    assert.ok(!fs.existsSync(path.join(project.path, 'knowledge', '.text', 'quote.pdf.txt')));
+  }
   // CLI chats read and change nothing; old workspaces become code folders.
   assert.deepEqual(command('claude', { mode: 'full', chat: true }).filter(a => a === '--tools' || a === 'Read,Glob,Grep' || a === 'bypassPermissions'), ['--tools', 'Read,Glob,Grep']);
   assert.ok(command('codex', { mode: 'full', chat: true }).includes('read-only'));
   assert.equal(migrate({ version: 2, workspaces: [{ id: 'w', name: 'x', path: '/x' }] }).workspaces[0].kind, 'code');
 });
+
+// Small real documents, made with macOS tools: textutil for Word, zip for PowerPoint and Excel XML.
+function officeFixtures(dir) {
+  const stream = 'BT /F1 24 Tf 72 700 Td (Total due 4200) Tj ET';
+  const objects = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
+  let pdf = '%PDF-1.4\n';
+  const offsets = objects.map((body, i) => { const at = pdf.length; pdf += `${i + 1} 0 obj\n${body}\nendobj\n`; return at; });
+  const xref = pdf.length;
+  pdf += `xref\n0 6\n0000000000 65535 f \n${offsets.map(o => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  fs.writeFileSync(path.join(dir, 'quote.pdf'), pdf);
+  fs.writeFileSync(path.join(dir, 'memo.txt'), 'Ship on Friday.');
+  execFileSync('textutil', ['-convert', 'docx', path.join(dir, 'memo.txt'), '-output', path.join(dir, 'memo.docx')]);
+  const zip = (name, entries) => {
+    const root = fs.mkdtempSync(path.join(dir, 'zip-'));
+    for (const [file, body] of Object.entries(entries)) { fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true }); fs.writeFileSync(path.join(root, file), body); }
+    execFileSync('zip', ['-qr', path.join(dir, name), '.'], { cwd: root });
+  };
+  const slide = paragraphs => `<p:sld xmlns:a="a" xmlns:p="p"><p:txBody>${paragraphs.map(p => `<a:p>${p.map(r => `<a:r><a:t>${r}</a:t></a:r>`).join('')}</a:p>`).join('')}</p:txBody></p:sld>`;
+  zip('deck.pptx', { 'ppt/slides/slide10.xml': slide([['Late']]), 'ppt/slides/slide1.xml': slide([['Q3 plan'], ['Hire two ', '&amp; ship']]), 'ppt/slides/slide2.xml': slide([['Risks']]) });
+  zip('rates.xlsx', {
+    'xl/workbook.xml': '<workbook><sheets><sheet name="Rates" sheetId="1"/></sheets></workbook>',
+    'xl/sharedStrings.xml': '<sst><si><t>Region</t></si><si><t>Rate</t></si><si><r><t>Nor</t></r><r><t>th</t></r></si></sst>',
+    'xl/worksheets/sheet1.xml': '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row><row r="2"><c r="A2" t="s"><v>2</v></c><c r="B2"><f>25/2</f><v>12.5</v></c></row></sheetData></worksheet>'
+  });
+}
 
 test('context usage: Claude Code stream, Codex rollout file, Copilot session log', () => {
   const usage = require('../electron/providers/usage');

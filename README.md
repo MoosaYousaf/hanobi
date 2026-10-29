@@ -15,7 +15,7 @@ Hanobi runs on macOS 12 Monterey and later, including Intel Macs. It pins Electr
 ## Features
 
 - **Chat** and **Code** views. Code lists the folders you add with **New Workspace**. Chat lists general chats and **Projects**.
-- Projects: instructions and documents that every chat in the project gets. API and local models receive the instructions and the text of text documents in the system prompt. CLI agents run in the project folder with read-only tools, read the instructions from `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md`, and open any document themselves.
+- Projects: instructions and documents that every chat in the project gets. API and local models receive the instructions and the document text in the system prompt. Hanobi converts PDF, Word (`.docx`, `.doc`), RTF, OpenDocument, PowerPoint (`.pptx`), and Excel (`.xlsx`) documents to text with macOS tools. Scanned PDFs and images have no text, so the model gets only their names. CLI agents run in the project folder with read-only tools, read the instructions from `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md`, and open any document themselves.
 - Chats use the same model sources as code. Subscription chat apps (claude.ai, ChatGPT, Gemini) have no public API for other apps, so chats with a subscription go through its CLI with read-only tools.
 - A model picker for every connected model. You can switch models in the middle of a conversation. A model from the same provider continues with the full native history. A model from a different provider gets a text transcript.
 - Streaming Markdown replies, thought summaries, and expandable tool calls.
@@ -89,5 +89,4 @@ The packaged app is unsigned. macOS may ask you to allow it in **System Settings
 
 1. Live verification of each subscription CLI and API provider on real accounts.
 2. GitHub pull requests, branches, and review status.
-3. Text extraction from PDF and Office documents for API models in projects.
-4. Signing, notarization, auto-update, a license, and contributor guidelines before a public release.
+3. Signing, notarization, auto-update, a license, and contributor guidelines before a public release.

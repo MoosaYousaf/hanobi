@@ -115,7 +115,9 @@ const handlers = {
     const project = projectById(id);
     const picked = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'] });
     if (picked.canceled) return [];
-    return projects.addFiles(project, picked.filePaths);
+    const added = projects.addFiles(project, picked.filePaths);
+    projects.warm(project, added);
+    return added;
   },
   'project:remove-file': (id, name) => projects.removeFile(projectById(id), name),
   'workspace:open': id => shell.openPath(store.workspace(id).path),

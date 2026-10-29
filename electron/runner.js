@@ -146,7 +146,7 @@ class Runner {
           question: request => this.question(threadId, { server: preset.name, ...request }) });
       } else {
         const tools = [...await this.mcp.tools(), ASK_TOOL];
-        const system = [this.store.data.preferences.systemPrompt, workspace.kind === 'project' ? projects.apiContext(workspace) : ''].filter(Boolean).join('\n\n');
+        const system = [this.store.data.preferences.systemPrompt, workspace.kind === 'project' ? await projects.apiContext(workspace) : ''].filter(Boolean).join('\n\n');
         const api = { ...common, apiKey: this.secrets.get(`key:${connection.id}`), system: system || undefined, tools, callTool: this.toolCaller(threadId, tools, draft) };
         result = preset.kind === 'anthropic' ? await anthropic.run(api) : await openai.run({ ...api, baseURL: connection.baseURL || preset.baseURL });
       }

@@ -31,6 +31,11 @@ Hanobi runs on macOS 12 Monterey and later, including Intel Macs. It pins Electr
   - API and local models can make files with the `hanobi__write_file` tool: text formats, `.html`, `.docx`, `.rtf`, `.odt`, and `.pdf`.
   - File cards show files you attach, files the model makes, and files a CLI agent writes. Each card has **Preview** (Quick Look), **Copy** (text, image, or the file itself), **Download**, **Open with default app**, and **Show in Finder**.
   - **Download** on a reply saves it as Markdown, Word, or PDF.
+- Desktop app:
+  - Notifications, a Dock badge, and a Dock bounce when a reply finishes or needs your approval while Hanobi is in the background. Click a notification to open the conversation.
+  - **⌥ Space** shows Hanobi from any app and hides it again. Change or turn off the shortcut in **Settings → General**.
+  - Open at login, one Hanobi at a time, the window size and place from last time, and a Dock menu with New Conversation and New Window.
+  - A free daily check of GitHub Releases for a newer version. Hanobi links to the release; it does not install it.
 - Git panel: status, diffs, stage, unstage, and commit. Switch or create branches, see commits to push and pull, push, publish a new branch, and pull (fast-forward only).
 - GitHub pull requests through the GitHub CLI (`gh`): the pull request of the current branch with its state, review decision, and checks; create one (title, Markdown description, base branch, draft); list open pull requests, open them on GitHub, or check them out. Run `gh auth login` once. Hanobi stores no GitHub token.
 - A list of the skills that your CLI agents load.
@@ -43,12 +48,18 @@ Hanobi runs on macOS 12 Monterey and later, including Intel Macs. It pins Electr
 - Message actions on hover: Copy, Edit, Rewind, and Branch. Edit replaces the message and the replies after it.
 - Multiple windows and keyboard shortcuts (`⌘N`, `⌘D`, `⇧⌘F`, `⌘,`, `⌘\`).
 
-## Run
+## Install
 
 ```sh
 npm install
-npm start
+npm run install:mac
 ```
+
+This builds Hanobi and puts it in `/Applications`. Open it from Spotlight, Launchpad, or the Dock like any other app. To update, run `git pull`, then `npm run install:mac` again. Your conversations and settings stay. The app is free and has no Apple developer signature, so macOS may ask once for Keychain access to Hanobi's saved keys. Click **Always Allow**.
+
+For development, `npm start` runs Hanobi from the source folder with the same data.
+
+## Run
 
 Then open **Settings → Models**:
 
@@ -87,6 +98,7 @@ npm run smoke       # starts the real app with throwaway data and drives the UI
 npm run icons       # renders build/icon.icns and docs/cover.png from their sources
 npm run package:mac # DMG and ZIP in dist/release; unsigned when no Developer ID certificate is installed
 npm run package:mac:release # signed and notarized; fails without a certificate
+npm run install:mac # build and install in /Applications
 ```
 
 `SMOKE_SHOTS=<folder> npm run smoke` saves light and dark screenshots. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the parts fit together.
@@ -100,7 +112,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, rules, and tests.
 ## Roadmap
 
 1. Live verification of each subscription CLI and API provider on real accounts.
-2. A Developer ID certificate, then signed and notarized releases and auto-update from GitHub Releases.
+2. Voice input.
 
 ## License
 

@@ -549,3 +549,11 @@ body.resizing { cursor: col-resize; user-select: none; }
 .app.focus .composer::before { content: '>'; position: absolute; left: 11px; top: 11px; font: 13px/1.55 var(--mono); color: var(--text-3); }
 .app.focus .composer textarea { font: 13px/1.55 var(--mono); }
 .app.focus .composer-row { font-family: var(--mono); }
+
+/* Desktop settings */
+.shortcut-row { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; flex-wrap: wrap; }
+.shortcut-row > span { flex: 1; min-width: 200px; color: var(--text-2); }
+.btn.shortcut { min-width: 96px; justify-content: center; font-family: var(--mono); }
+.btn.shortcut.on { border-color: var(--accent); }
+.hint.warn { color: var(--warning); }
+.foot-btn.update { font-size: 12px; color: var(--text-2); }

@@ -150,6 +150,11 @@ app.whenReady().then(async () => {
     await clickText(win, '.palette', 'Gemini style');
     await until(win, `document.documentElement.dataset.palette === 'gemini' && getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() !== ''`, 'palette applies');
     await shot(win, '5-theme');
+    await until(win, `[...document.querySelectorAll('.settings .shortcut-row')].map(r => r.textContent).join('|').match(/Show Hanobi from any app.*⌥ Space.*\\|Hanobi 0\\.\\d+\\.\\d+.*Check now/) !== null`, 'desktop settings show the shortcut and the version');
+    await clickText(win, '.settings .shortcut-row .btn', 'Turn off');
+    await until(win, `[...document.querySelectorAll('.settings .shortcut-row .btn.shortcut')][0]?.textContent === 'Off'`, 'the shortcut turns off');
+    await clickText(win, '.settings .shortcut-row .btn', 'Use ⌥ Space');
+    await until(win, `[...document.querySelectorAll('.settings .shortcut-row .btn.shortcut')][0]?.textContent.includes('Space')`, 'the shortcut turns on');
     await clickText(win, '.palette', 'Hanobi');
     await until(win, `document.documentElement.dataset.palette === 'hanobi'`, 'palette resets');
     await win.webContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
@@ -221,7 +226,7 @@ app.whenReady().then(async () => {
     })()`);
     await until(win, `(${JSON.stringify(listed)}).at(-1) === [...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row .thread-title')][0].textContent`, 'dragging a conversation reorders the list');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar and preview, file cards, reply export to PDF and Word.\n');
+    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar and preview, file cards, reply export to PDF and Word, desktop settings.\n');
     app.exit(0);
   } catch (error) {
     if (errors.length) console.error('Console errors:\n' + errors.join('\n')); process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }

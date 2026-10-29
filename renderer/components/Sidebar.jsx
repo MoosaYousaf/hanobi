@@ -127,6 +127,7 @@ function Pinned({ threads }) {
 const inView = (workspace, view) => (view === 'chat') === (workspace.kind !== 'code');
 
 export function Sidebar() {
+  const update = useStore(s => s.app.desktop?.update);
   const workspaces = useStore(s => s.app.workspaces);
   const threads = useStore(s => s.app.threads);
   const view = useStore(s => s.ui.view);
@@ -166,6 +167,7 @@ export function Sidebar() {
         <button className="foot-btn" onClick={() => setUi({ settings: 'models' })}>
           <SettingsIcon size={15} /> Settings
         </button>
+        {update?.newer ? <button className="foot-btn update" onClick={() => setUi({ settings: 'general' })}>Hanobi {update.latest} is available</button> : null}
       </div>
     </aside>
   );

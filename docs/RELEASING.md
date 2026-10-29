@@ -34,9 +34,11 @@ spctl --assess --type execute --verbose dist/release/mac/Hanobi.app
 ## Publish
 
 1. Change `version` in `package.json` and commit.
-2. Tag the commit: `git tag v<version>` and `git push --tags`.
-3. Make a GitHub release for the tag. Attach the DMG and the ZIP from `dist/release`.
+2. Tag the commit and push the tag: `git tag v<version>` and `git push --tags`.
+3. The `Release` workflow (`.github/workflows/release.yml`) runs the tests, builds unsigned DMG and ZIP files for Intel and Apple Silicon, and makes the GitHub release.
 
-## Auto-update
+Hanobi's update check reads the latest release through the GitHub API without a token. It works only when the repository is public. A private repository answers 404, and Settings shows "No public release yet". GitHub Actions on a private repository uses the free monthly minutes. A macOS minute counts as ten.
 
-Auto-update is not built yet. On macOS, Squirrel.Mac updates only signed apps, so it waits for a Developer ID certificate. The plan is `electron-updater` with GitHub Releases as the feed. The ZIP is the update file and the DMG is for first installs.
+## Updates without signing
+
+Squirrel.Mac (the macOS auto-updater) installs updates only for signed apps. Hanobi is free and unsigned, so it checks GitHub Releases once a day and links to a newer release. From source, `git pull` and `npm run install:mac` update the installed app.

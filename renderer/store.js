@@ -120,6 +120,7 @@ export function start() {
   api.on('approval', request => set(s => ({ approvals: [...s.approvals, request] })));
   api.on('question', request => set(s => ({ approvals: [...s.approvals, request] })));
   api.on('approval-done', ({ id }) => set(s => ({ approvals: s.approvals.filter(a => a.id !== id) })));
+  api.on('open-thread', id => guard(openThread)(id));
   api.on('menu', action => {
     if (action === 'settings') setUi({ settings: 'models' });
     if (action === 'new-thread') guard(newThread)();

@@ -11,6 +11,7 @@ npm run smoke        # real app, throwaway data; SMOKE_SHOTS=<dir> saves light/d
 npm run icons        # build/icon.svg -> icon.icns/png, docs/cover.html -> cover.png
 npm run package:mac  # DMG/ZIP in dist/release (unsigned without a Developer ID cert)
 npm run package:mac:release  # signed + notarized; see docs/RELEASING.md
+npm run install:mac  # build, ad-hoc sign, install in /Applications (the user's daily app)
 ```
 
 ## Rules

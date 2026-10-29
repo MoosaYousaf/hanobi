@@ -12,7 +12,8 @@
     "smoke": "vite build && electron scripts/smoke.cjs",
     "icons": "electron scripts/render-icons.cjs",
     "package:mac": "vite build && electron-builder --mac dmg zip",
-    "package:mac:release": "vite build && electron-builder --mac dmg zip -c.mac.forceCodeSigning=true"
+    "package:mac:release": "vite build && electron-builder --mac dmg zip -c.mac.forceCodeSigning=true",
+    "install:mac": "node scripts/install-mac.cjs"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "6.1.2",

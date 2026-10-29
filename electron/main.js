@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, safeStorage, nativeTheme, clipboard, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, safeStorage, nativeTheme, clipboard, nativeImage, Notification, globalShortcut, screen } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -16,14 +16,52 @@ const git = require('./git');
 const github = require('./github');
 const { Files, safeName, mediaType } = require('./files');
 const { skills } = require('./skills');
+const desktop = require('./desktop');
+// From package.json, not from Electron: a script started with `electron <file>` reports Electron's version.
+const VERSION = require('../package.json').version;
 
 app.setName('Hanobi');
 // Tests and smoke runs use a throwaway data folder.
 if (process.env.HANOBI_USER_DATA) app.setPath('userData', process.env.HANOBI_USER_DATA);
+// One Hanobi at a time: a second launch shows the open window.
+if (!app.requestSingleInstanceLock()) app.quit();
 const windows = new Set();
-let store, secrets, mcp, runner, files;
+let store, secrets, mcp, runner, files, attention, update = null, shortcutError = '';
 
-function send(channel, value) { for (const win of windows) if (!win.isDestroyed()) win.webContents.send(channel, value); }
+function send(channel, value) {
+  for (const win of windows) if (!win.isDestroyed()) win.webContents.send(channel, value);
+  if (attention) noticeFor(channel, value);
+}
+// A reply that ends, or a request that waits, while Hanobi is in the background gets a notification.
+function noticeFor(channel, value) {
+  const thread = value?.threadId && store.data.threads.find(t => t.id === value.threadId);
+  if (!thread) return;
+  if (channel === 'run-state' && !value.running) {
+    const reply = thread.messages.at(-1);
+    const text = reply?.role === 'assistant' ? reply.parts.filter(p => p.type === 'text').map(p => p.text).join(' ').replace(/[#*`>_]+/g, '').trim() : '';
+    attention.notify({ threadId: thread.id, title: thread.title, body: value.error ? `Failed: ${value.error}` : text || 'The reply is ready.' });
+  } else if (channel === 'approval' || channel === 'question') {
+    attention.notify({ threadId: thread.id, title: thread.title, body: channel === 'approval' ? `${value.server || 'The agent'} asks to run ${value.tool || value.name || 'a tool'}.` : 'The model has a question for you.', urgent: true });
+  }
+}
+// Shows a window (making one if none is open) and, with a thread id, opens that conversation.
+function showWindow(threadId) {
+  const win = BrowserWindow.getFocusedWindow() || [...windows].filter(w => !w.isDestroyed()).at(-1) || createWindow();
+  if (win.isMinimized()) win.restore();
+  win.show(); win.focus(); app.focus({ steal: true });
+  if (threadId) { const open = () => win.webContents.send('open-thread', threadId); win.webContents.isLoading() ? win.webContents.once('did-finish-load', open) : open(); }
+  return win;
+}
+// The global shortcut shows Hanobi from any app, and hides it when it is already in front.
+function registerShortcut() {
+  globalShortcut.unregisterAll();
+  shortcutError = '';
+  const accelerator = store.data.preferences.shortcut ?? desktop.DEFAULT_SHORTCUT;
+  if (!accelerator) return;
+  try { if (!globalShortcut.register(accelerator, () => (BrowserWindow.getFocusedWindow() ? app.hide() : showWindow()))) shortcutError = `${accelerator} is in use by another app.`; }
+  catch { shortcutError = `${accelerator} is not a valid shortcut.`; }
+}
+async function checkUpdate() { update = await desktop.checkForUpdate(VERSION); changed(); return update; }
 const changed = () => send('changed');
 // Menu actions that change one window's layout go only to the focused window.
 const focused = action => BrowserWindow.getFocusedWindow()?.webContents.send('menu', action);
@@ -31,14 +69,23 @@ const focused = action => BrowserWindow.getFocusedWindow()?.webContents.send('me
 const dataFile = () => path.join(app.getPath('userData'), 'hanobi-data.json');
 
 function createWindow() {
+  // The first window opens where the last one closed. More windows open with the default size.
+  const first = !windows.size, saved = store.data.preferences.window;
+  const bounds = first ? desktop.restoreBounds(saved, screen.getAllDisplays()) : {};
   const win = new BrowserWindow({
-    width: 1360, height: 880, minWidth: 860, minHeight: 560,
+    width: 1360, height: 880, ...bounds, minWidth: 860, minHeight: 560,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#121212' : '#f6f6f4',
     titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 18 },
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   windows.add(win);
   win.on('closed', () => windows.delete(win));
+  if (first && saved?.fullScreen) win.once('ready-to-show', () => win.setFullScreen(true));
+  // getNormalBounds is the size outside full screen, so a full-screen window still saves a usable size.
+  const remember = () => { if (!win.isDestroyed()) { store.data.preferences.window = { ...win.getNormalBounds(), fullScreen: win.isFullScreen() }; store.save(); } };
+  let timer;
+  for (const event of ['resize', 'move', 'enter-full-screen', 'leave-full-screen']) win.on(event, () => { clearTimeout(timer); timer = setTimeout(remember, 400); });
+  win.on('close', remember);
   // Leaving full screen with the window button also leaves focus mode.
   win.on('leave-full-screen', () => win.webContents.send('menu', 'focus-off'));
   if (process.env.VITE_DEV_SERVER_URL) win.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -55,6 +102,7 @@ function state() {
     mcpServers: summary.mcpServers.map(s => { const secret = secrets.get(`mcp:${s.id}`) || {}; return { ...s, envKeys: Object.keys(secret.env || {}), headerKeys: Object.keys(secret.headers || {}) }; }),
     connections: runner.connections(),
     presets: Object.fromEntries(Object.entries(presets).map(([id, p]) => [id, { name: p.name, kind: p.kind, route: p.route, needsKey: !!p.needsKey, baseURL: p.baseURL || '', efforts: p.efforts, keyUrl: p.keyUrl || '', note: p.note || '', customModels: !!p.customModels, asks: !!p.asks, ...(p.kind === 'cli' ? { models: p.models } : {}) }])),
+    desktop: { version: VERSION, packaged: app.isPackaged, openAtLogin: app.isPackaged && app.getLoginItemSettings().openAtLogin, shortcut: store.data.preferences.shortcut ?? desktop.DEFAULT_SHORTCUT, shortcutError, notify: store.data.preferences.notify !== false, update },
     modes, mcpStatus: mcp.statuses(), running: Object.keys(runner.live()), warning: store.warning, secretsAvailable: secrets.available()
   };
 }
@@ -218,6 +266,10 @@ const handlers = {
     if ('suggestReplies' in patch) store.data.preferences.suggestReplies = !!patch.suggestReplies;
     if ('palette' in patch) store.data.preferences.palette = PALETTES.includes(patch.palette) ? patch.palette : 'hanobi';
     if ('accent' in patch && /^#[0-9a-f]{6}$/i.test(patch.accent)) store.data.preferences.accent = patch.accent.toLowerCase();
+    if ('notify' in patch) store.data.preferences.notify = !!patch.notify;
+    if ('shortcut' in patch) { store.data.preferences.shortcut = String(patch.shortcut || '').slice(0, 60); registerShortcut(); }
+    // A login item for the development Electron binary would start Electron, not Hanobi.
+    if ('openAtLogin' in patch && app.isPackaged) app.setLoginItemSettings({ openAtLogin: !!patch.openAtLogin });
     store.save(); if ('theme' in patch) nativeTheme.themeSource = ['light', 'dark'].includes(patch.theme) ? patch.theme : 'system'; changed(); },
   'clis:rescan': () => { for (const p of Object.values(presets)) if (p.cli) cliPath(p.cli, true); changed(); },
   skills: id => skills(id ? store.workspace(id).path : null),
@@ -276,6 +328,8 @@ const handlers = {
     await files.render(target.filePath, /\.(docx|rtf|odt|pdf|html?)$/i.test(target.filePath) && html ? html : text);
     return target.filePath;
   },
+  'update:check': () => checkUpdate(),
+  'update:open': () => { if (update?.url && /^https:\/\/github\.com\//.test(update.url)) return shell.openExternal(update.url); },
   'open:external': url => { if (/^https:\/\//.test(url)) return shell.openExternal(url); },
   'window:new': () => { createWindow(); },
   'window:fullscreen': on => { const win = BrowserWindow.getFocusedWindow(); if (win && win.isFullScreen() !== !!on) win.setFullScreen(!!on); }
@@ -302,9 +356,17 @@ app.whenReady().then(() => {
     { role: 'windowMenu' }
   ]));
   if (!app.isPackaged) app.dock?.setIcon(path.join(__dirname, '../build/icon.png'));
+  app.dock?.setMenu(Menu.buildFromTemplate([{ label: 'New Conversation', click: () => { showWindow(); send('menu', 'new-thread'); } }, { label: 'New Window', click: () => createWindow() }]));
+  attention = new desktop.Attention({ app, Notification, isFocused: () => !!BrowserWindow.getFocusedWindow(), show: showWindow, enabled: () => store.data.preferences.notify !== false });
+  app.on('browser-window-focus', () => attention.clear());
+  app.on('second-instance', () => showWindow());
+  registerShortcut();
   createWindow();
+  // A free check against GitHub Releases, once at launch and then once a day. Smoke runs skip it.
+  if (!process.env.HANOBI_USER_DATA) { setTimeout(checkUpdate, 5000); setInterval(checkUpdate, 24 * 60 * 60 * 1000).unref(); }
   app.on('activate', () => { if (windows.size === 0) createWindow(); });
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('will-quit', () => globalShortcut.unregisterAll());
 app.on('before-quit', () => { runner?.stopAll(); mcp?.closeAll(); store?.flush(); });

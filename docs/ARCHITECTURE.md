@@ -24,6 +24,7 @@ electron/main.js
   ├─ git.js            async git with porcelain v2 -z, run from the repository root; branches, push, pull; checkpoints through a private index
   ├─ github.js         pull requests through the gh CLI (view, list, create with the body on stdin, checkout); no token in Hanobi
   ├─ projects.js       project folders: instructions files, knowledge/ documents, API context
+  ├─ desktop.js        window bounds, background notifications and Dock badge, update check against GitHub Releases
   ├─ files.js          conversation files: attachments (Files/<thread>/in), model files (out), HTML to docx/rtf/odt/pdf, path checks
   ├─ extract.js        document text (PDF, Word, RTF, ODT, PowerPoint, Excel) with macOS tools, cached in knowledge/.text/
   ├─ suggest.js        suggested-replies prompt and parsing

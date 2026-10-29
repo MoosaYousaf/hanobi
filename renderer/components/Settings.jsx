@@ -208,6 +208,48 @@ const palettes = [
   { id: 'custom', label: 'Custom' }
 ];
 
+// Accelerator text from a key press: modifiers first, then the key, in Electron's format.
+function accelerator(e) {
+  if (['Meta', 'Control', 'Alt', 'Shift'].includes(e.key)) return null;
+  const mods = [e.metaKey && 'Command', e.ctrlKey && 'Control', e.altKey && 'Alt', e.shiftKey && 'Shift'].filter(Boolean);
+  const key = e.code === 'Space' ? 'Space' : /^Key[A-Z]$/.test(e.code) ? e.code.slice(3) : /^Digit\d$/.test(e.code) ? e.code.slice(5) : /^F\d+$/.test(e.key) ? e.key : null;
+  return mods.length && key ? [...mods, key].join('+') : null;
+}
+const shortcutLabel = a => a.replace(/Command\+?/g, '⌘').replace(/Control\+?/g, '⌃').replace(/Alt\+?/g, '⌥').replace(/Shift\+?/g, '⇧').replace('Space', ' Space');
+
+function DesktopSection() {
+  const desk = useStore(s => s.app.desktop);
+  const [recording, setRecording] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const setPref = patch => guard(() => call('prefs:set', patch))();
+  const check = async () => { setChecking(true); try { await call('update:check'); } catch (error) { toast(error); } finally { setChecking(false); } };
+  const u = desk.update;
+  return (
+    <>
+      <h3>Desktop</h3>
+      <label className="check"><input type="checkbox" checked={desk.notify} onChange={e => setPref({ notify: e.target.checked })} /> Notify me when a reply finishes or needs approval while Hanobi is in the background</label>
+      <label className="check"><input type="checkbox" disabled={!desk.packaged} checked={desk.openAtLogin} onChange={e => setPref({ openAtLogin: e.target.checked })} /> Open Hanobi at login</label>
+      {!desk.packaged ? <p className="hint">Open at login works in the installed app. Run <code>npm run install:mac</code> to install Hanobi in Applications.</p> : null}
+      <div className="shortcut-row">
+        <span>Show Hanobi from any app</span>
+        <button className={`btn sm shortcut ${recording ? 'on' : ''}`} onClick={() => setRecording(true)} onBlur={() => setRecording(false)}
+          onKeyDown={e => { if (!recording) return; e.preventDefault(); if (e.key === 'Escape') return setRecording(false); const a = accelerator(e); if (a) { setRecording(false); setPref({ shortcut: a }); } }}>
+          {recording ? 'Press keys…' : desk.shortcut ? shortcutLabel(desk.shortcut) : 'Off'}
+        </button>
+        {desk.shortcut ? <button className="btn sm" onClick={() => setPref({ shortcut: '' })}>Turn off</button> : <button className="btn sm" onClick={() => setPref({ shortcut: 'Alt+Space' })}>Use ⌥ Space</button>}
+      </div>
+      {desk.shortcutError ? <p className="hint warn">{desk.shortcutError}</p> : null}
+      <h3>Updates</h3>
+      <div className="shortcut-row">
+        <span>Hanobi {desk.version}{u?.newer ? <> · <strong>{u.latest}</strong> is available</> : u?.latest ? ' · up to date' : ''}</span>
+        {u?.newer ? <button className="btn sm" onClick={guard(() => call('update:open'))}>Get {u.latest}</button> : null}
+        <button className="btn sm" disabled={checking} onClick={check}>{checking ? 'Checking…' : 'Check now'}</button>
+      </div>
+      <p className="hint">{u?.error ? `${u.error} ` : ''}Hanobi checks GitHub Releases once a day. It does not install updates itself, because unsigned apps cannot update in place. From source, run <code>git pull</code> and <code>npm run install:mac</code>.</p>
+    </>
+  );
+}
+
 function GeneralPane() {
   const prefs = useStore(s => s.app.preferences);
   const [system, setSystem] = useState(prefs.systemPrompt);
@@ -234,6 +276,7 @@ function GeneralPane() {
       <h3>Instructions for API and local models</h3>
       <textarea className="system-prompt" rows={6} value={system} onChange={e => setSystem(e.target.value)} onBlur={() => system !== prefs.systemPrompt && setPref({ systemPrompt: system })} placeholder="For example: Answer briefly. Use metric units." />
       <p className="hint">CLI agents use their own instructions, such as CLAUDE.md or AGENTS.md.</p>
+      <DesktopSection />
       <h3>Privacy</h3>
       <p className="hint">Conversations stay in this Mac’s Application Support folder. Prompts go only to the model you choose.</p>
     </>

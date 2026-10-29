@@ -16,6 +16,7 @@
     "install:mac": "node scripts/install-mac.cjs"
   },
   "devDependencies": {
+    "@huggingface/transformers": "4.3.2",
     "@vitejs/plugin-react": "6.1.2",
     "electron": "40.3.0",
     "electron-builder": "26.0.12",
@@ -44,7 +45,8 @@
       "extendInfo": {
         "NSDownloadsFolderUsageDescription": "Hanobi accesses project folders you choose in Downloads so your coding agent can read and edit their files.",
         "NSDocumentsFolderUsageDescription": "Hanobi accesses project folders you choose in Documents so your coding agent can read and edit their files.",
-        "NSDesktopFolderUsageDescription": "Hanobi accesses project folders you choose on Desktop so your coding agent can read and edit their files."
+        "NSDesktopFolderUsageDescription": "Hanobi accesses project folders you choose on Desktop so your coding agent can read and edit their files.",
+        "NSMicrophoneUsageDescription": "Hanobi uses the microphone for voice input. Speech is turned into text on this Mac and is not sent anywhere."
       },
       "icon": "build/icon.icns"
     },

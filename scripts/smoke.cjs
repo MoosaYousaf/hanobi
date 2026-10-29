@@ -45,7 +45,10 @@ fs.copyFileSync(path.join(__dirname, '../test/fixtures/fake-gh.cjs'), path.join(
 process.env.PATH = `${ghBin}${path.delimiter}${process.env.PATH}`;
 process.env.FAKE_GH_LOG = path.join(ghBin, 'log'); process.env.FAKE_GH_STATE = path.join(ghBin, 'state.json');
 fs.writeFileSync(process.env.FAKE_GH_STATE, JSON.stringify({ pr: { number: 12, title: 'Parse breaking changes from the changelog', url: 'https://github.com/example/hanobi/pull/12', state: 'OPEN', isDraft: false, reviewDecision: 'CHANGES_REQUESTED', headRefName: 'feature/parser', baseRefName: 'main', author: { login: 'me' }, updatedAt: '2026-10-29T00:00:00Z' } }));
-const { app, BrowserWindow, nativeTheme, dialog } = require('electron');
+const { app, BrowserWindow, nativeTheme, dialog, systemPreferences } = require('electron');
+// The microphone answers "denied", so voice input shows its permission message without a macOS prompt.
+systemPreferences.getMediaAccessStatus = () => 'denied';
+systemPreferences.askForMediaAccess = async () => false;
 // Save dialogs answer with a fixed path, so downloads run without a person.
 let saveTarget = null;
 dialog.showSaveDialog = async () => ({ canceled: !saveTarget, filePath: saveTarget });
@@ -135,6 +138,8 @@ app.whenReady().then(async () => {
     if (!fs.readFileSync(path.join(ghBin, 'reply.pdf')).subarray(0, 5).equals(Buffer.from('%PDF-'))) throw new Error('reply.pdf is not a PDF');
     if (!/Quarterly totals[\s\S]*North/.test(execFileSync('textutil', ['-convert', 'txt', '-stdout', path.join(ghBin, 'reply.docx')], { encoding: 'utf8' }))) throw new Error('reply.docx text is wrong');
     saveTarget = null;
+    await win.webContents.executeJavaScript(`(() => { const b = document.querySelector('.composer-row .icon-btn.mic'); b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 })); b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 })); })()`);
+    await until(win, `(document.querySelector('.toast')?.textContent || '').includes('Privacy & Security → Microphone') && !document.querySelector('.icon-btn.mic.live')`, 'voice input explains a denied microphone');
     await clickText(win, '.thread-row', 'Parse the release notes');
     await click(win, '.new-chat');
     await until(win, `!!document.querySelector('.composer textarea')`, 'composer renders');
@@ -161,6 +166,7 @@ app.whenReady().then(async () => {
     await until(win, `document.documentElement.dataset.palette === 'gemini' && getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() !== ''`, 'palette applies');
     await shot(win, '5-theme');
     await until(win, `[...document.querySelectorAll('.settings .shortcut-row')].map(r => r.textContent).join('|').match(/Show Hanobi from any app.*⌥ Space.*\\|Hanobi 0\\.\\d+\\.\\d+.*Check now/) !== null`, 'desktop settings show the shortcut and the version');
+    await until(win, `[...document.querySelectorAll('.settings .voice-model strong')].map(e => e.textContent).join() === 'Tiny,Base,Small' && document.querySelectorAll('.settings .voice-model.on').length === 1 && document.querySelector('.voice-language select').value === 'en'`, 'voice settings list the models and the language');
     await clickText(win, '.settings .shortcut-row .btn', 'Turn off');
     await until(win, `[...document.querySelectorAll('.settings .shortcut-row .btn.shortcut')][0]?.textContent === 'Off'`, 'the shortcut turns off');
     await clickText(win, '.settings .shortcut-row .btn', 'Use ⌥ Space');
@@ -236,7 +242,7 @@ app.whenReady().then(async () => {
     })()`);
     await until(win, `(${JSON.stringify(listed)}).at(-1) === [...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row .thread-title')][0].textContent`, 'dragging a conversation reorders the list');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, preview, and isolated Run, file cards, reply export to PDF and Word, desktop settings.\n');
+    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, preview, and isolated Run, file cards, reply export to PDF and Word, desktop settings, voice input controls.\n');
     app.exit(0);
   } catch (error) {
     if (errors.length) console.error('Console errors:\n' + errors.join('\n')); process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }

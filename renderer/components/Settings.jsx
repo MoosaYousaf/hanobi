@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, Plus, RefreshCw, Trash2, ExternalLink, Plug, Cpu, SlidersHorizontal, Pencil } from 'lucide-react';
 import { useStore, setUi, call, guard, toast, askConfirm } from '../store.js';
 import { routeIcon } from './ModelPicker.jsx';
@@ -250,6 +250,44 @@ function DesktopSection() {
   );
 }
 
+// Whisper's languages that people ask for most. Whisper does not detect the language here, so the user picks one.
+const LANGUAGES = [['en', 'English'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['it', 'Italian'], ['pt', 'Portuguese'], ['nl', 'Dutch'],
+  ['ar', 'Arabic'], ['ur', 'Urdu'], ['hi', 'Hindi'], ['bn', 'Bengali'], ['pa', 'Punjabi'], ['fa', 'Persian'], ['tr', 'Turkish'], ['ru', 'Russian'], ['uk', 'Ukrainian'],
+  ['pl', 'Polish'], ['zh', 'Chinese'], ['ja', 'Japanese'], ['ko', 'Korean'], ['vi', 'Vietnamese'], ['id', 'Indonesian'], ['sv', 'Swedish']];
+const mb = bytes => `${Math.round(bytes / 1048576)} MB`;
+
+function VoiceSection() {
+  const voice = useStore(s => s.app.voice);
+  const [models, setModels] = useState([]);
+  const load = () => call('voice:models').then(setModels, toast);
+  useEffect(() => { load(); }, [voice.model]);
+  const setVoice = patch => guard(() => call('prefs:set', { voice: patch }))();
+  const remove = guard(async m => {
+    if (!await askConfirm({ title: `Delete the ${m.label} speech model?`, message: `This frees ${mb(m.bytes)}. Voice input downloads it again the next time you use it.`, confirmLabel: 'Delete', danger: true })) return;
+    await call('voice:remove-model', m.id); load();
+  });
+  return (
+    <>
+      <h3>Voice input</h3>
+      <p className="hint">Click the microphone to start and click again to stop, or hold it to talk and release to stop. <kbd>⌘⇧D</kbd> works the same way. Whisper turns speech into text on this Mac; audio never leaves it. The first use downloads the model once.</p>
+      <div className="voice-models">
+        {models.map(m => (
+          <label key={m.id} className={`voice-model ${voice.model === m.id ? 'on' : ''}`}>
+            <input type="radio" name="voice-model" checked={voice.model === m.id} onChange={() => setVoice({ model: m.id })} />
+            <span className="voice-model-text"><strong>{m.label}</strong> <span className="muted">{m.size}</span><span className="hint">{m.note}</span></span>
+            {m.downloaded ? <button type="button" className="btn sm" onClick={e => { e.preventDefault(); remove(m); }}>Delete ({mb(m.bytes)})</button> : <span className="muted voice-model-state">Not downloaded</span>}
+          </label>
+        ))}
+      </div>
+      <label className="field voice-language"><span>Language you speak</span>
+        <select className="mini-select" value={voice.language} onChange={e => setVoice({ language: e.target.value })}>
+          {LANGUAGES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+        </select>
+      </label>
+    </>
+  );
+}
+
 function GeneralPane() {
   const prefs = useStore(s => s.app.preferences);
   const [system, setSystem] = useState(prefs.systemPrompt);
@@ -276,6 +314,7 @@ function GeneralPane() {
       <h3>Instructions for API and local models</h3>
       <textarea className="system-prompt" rows={6} value={system} onChange={e => setSystem(e.target.value)} onBlur={() => system !== prefs.systemPrompt && setPref({ systemPrompt: system })} placeholder="For example: Answer briefly. Use metric units." />
       <p className="hint">CLI agents use their own instructions, such as CLAUDE.md or AGENTS.md.</p>
+      <VoiceSection />
       <DesktopSection />
       <h3>Privacy</h3>
       <p className="hint">Conversations stay in this Mac’s Application Support folder. Prompts go only to the model you choose.</p>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Square, Plus, X } from 'lucide-react';
-import { useStore, call, guard, toast, askConfirm } from '../store.js';
+import { ArrowUp, Square, Plus, X, Mic } from 'lucide-react';
+import { useStore, getState, call, guard, toast, askConfirm } from '../store.js';
+import { startVoice, stopVoice, cancelVoice } from '../voice/voice.js';
 import { ModelPicker } from './ModelPicker.jsx';
 import { formatSize } from './Files.jsx';
 
@@ -34,9 +35,64 @@ function UsageRing({ thread }) {
   );
 }
 
+// Voice input with one button: a click starts and the next click stops; a press longer than HOLD_MS is
+// hold-to-talk and stops on release. ⌘⇧D works the same way in the active pane. Escape cancels.
+const HOLD_MS = 350;
+function useVoiceControl(threadId) {
+  const pressedAt = useRef(0);
+  const down = () => {
+    const voice = getState().voice;
+    if (voice.state === 'listening' && voice.threadId === threadId) { pressedAt.current = 0; stopVoice(); return; }
+    if (voice.state !== 'idle') return;
+    pressedAt.current = Date.now();
+    startVoice(threadId);
+  };
+  const up = () => { if (pressedAt.current && Date.now() - pressedAt.current > HOLD_MS) stopVoice(); pressedAt.current = 0; };
+  useEffect(() => {
+    const active = () => getState().ui.threadId === threadId;
+    const onDown = e => {
+      if (e.key === 'Escape' && getState().voice.threadId === threadId && getState().voice.state === 'listening') { e.preventDefault(); cancelVoice(); }
+      if (e.code === 'KeyD' && e.metaKey && e.shiftKey && !e.repeat && active()) { e.preventDefault(); down(); }
+    };
+    const onUp = e => { if ((e.code === 'KeyD' || e.key === 'Meta') && pressedAt.current && active()) up(); };
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    return () => { window.removeEventListener('keydown', onDown); window.removeEventListener('keyup', onUp); };
+  }, [threadId]);
+  return { down, up };
+}
+
+function MicButton({ threadId }) {
+  const voice = useStore(s => s.voice);
+  const { down, up } = useVoiceControl(threadId);
+  const mine = voice.threadId === threadId;
+  const listening = mine && voice.state === 'listening';
+  const busy = mine && (voice.state === 'transcribing' || voice.state === 'starting');
+  const label = listening ? 'Stop and transcribe (click, or release when holding)' : busy ? 'Transcribing…' : 'Voice input: click to start, or hold to talk (⌘⇧D)';
+  return (
+    <button className={`icon-btn mic tip ${listening ? 'live' : ''} ${busy ? 'busy' : ''}`} data-tip={label} aria-label={label} aria-pressed={listening}
+      disabled={voice.state !== 'idle' && !mine}
+      style={listening ? { '--level': voice.level || 0 } : undefined}
+      onPointerDown={e => { if (e.button === 0) { e.preventDefault(); down(); } }} onPointerUp={up} onPointerLeave={() => listening && up()}
+      onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); down(); } }} onKeyUp={e => { if (e.key === 'Enter' || e.key === ' ') up(); }}>
+      {busy ? <span className="mini-spin" /> : <Mic size={16} />}
+    </button>
+  );
+}
+
+function VoiceStatus({ threadId }) {
+  const voice = useStore(s => s.voice);
+  if (voice.threadId !== threadId || voice.state === 'idle') return null;
+  const text = voice.state === 'listening' ? 'Listening… click the mic or release to finish. Esc cancels.'
+    : voice.progress !== undefined && voice.progress < 1 ? `Downloading the speech model, one time: ${Math.round(voice.progress * 100)}%`
+    : voice.state === 'starting' ? 'Starting the microphone…' : voice.loading ? 'Loading the speech model, then transcribing on this Mac…' : 'Transcribing on this Mac…';
+  return <div className="voice-status" role="status">{text}</div>;
+}
+
 // Text drafts survive switching between conversations.
 const drafts = new Map();
 // A mounted composer listens, so a draft set from outside (rewind, a suggestion) shows at once.
+export const getDraft = threadId => drafts.get(threadId) ?? '';
 export const setDraft = (threadId, text) => { drafts.set(threadId, text); window.dispatchEvent(new CustomEvent('hanobi-draft', { detail: threadId })); };
 
 export function Composer({ thread, workspace, modelLabel }) {
@@ -103,8 +159,10 @@ export function Composer({ thread, workspace, modelLabel }) {
           ? <button className="send stop" title="Stop" onClick={guard(() => call('run:stop', thread.id))}><Square size={11} fill="currentColor" /></button>
           : <button className="send" title="Send (Enter)" disabled={!text.trim() && !files.length} onClick={send}><ArrowUp size={15} strokeWidth={2.4} /></button>}
       </div>
+      <VoiceStatus threadId={thread.id} />
       <div className="composer-row">
         <button className="icon-btn tip" data-tip="Attach files" aria-label="Attach files" onClick={pick}><Plus size={16} /></button>
+        <MicButton threadId={thread.id} />
         {!chatCli ? (
           <select className={`mini-select ${mode.danger ? 'danger' : ''}`} value={mode.id} disabled={running} onChange={e => onAccess(e.target.value)} title={mode.detail}>
             {modes.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}

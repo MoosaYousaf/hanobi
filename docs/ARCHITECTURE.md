@@ -25,6 +25,7 @@ electron/main.js
   ├─ github.js         pull requests through the gh CLI (view, list, create with the body on stdin, checkout); no token in Hanobi
   ├─ projects.js       project folders: instructions files, knowledge/ documents, API context
   ├─ desktop.js        window bounds, background notifications and Dock badge, update check against GitHub Releases
+  ├─ models.js         Whisper model cache behind hanobi-model://: allowlisted repos, one download per file, Range support
   ├─ files.js          conversation files: attachments (Files/<thread>/in), model files (out), HTML to docx/rtf/odt/pdf, path checks
   ├─ extract.js        document text (PDF, Word, RTF, ODT, PowerPoint, Excel) with macOS tools, cached in knowledge/.text/
   ├─ suggest.js        suggested-replies prompt and parsing
@@ -70,4 +71,8 @@ Each saved assistant message can carry `usage: { used, window }`: the tokens of 
 ## Files
 
 `electron/files.js` keeps each conversation's files under `<userData>/Files/<thread id>/`. Attachments are copied to `in/<uuid>/`, so a moved original does not break the chat. Files that API models make with `hanobi__write_file` go to `out/`. A file part is `{ type: 'file', name, path, size, mediaType }`; user messages hold attachments and replies hold made files. The renderer shows cards for file parts and for paths that CLI tools wrote (`Write`, `Edit`, Codex file changes, Copilot `create`/`edit`). Every file action goes through `Files.resolve`, which accepts only real paths inside the thread's folder or its workspace (symbolic links are resolved first). Attachment text comes from `extract.js` and goes into prompts as `<attachment>` blocks: through the transcript for API models, and in the stdin prompt with paths for CLI agents. Word, RTF, and OpenDocument output come from HTML through `textutil`; PDF output comes from Chromium's printer in a hidden window with scripts off.
+
+## Voice input
+
+The microphone button and ⌘⇧D drive `renderer/voice/voice.js`. `recorder.js` records 16 kHz mono samples with Web Audio. `whisper.worker.js` runs Whisper through `@huggingface/transformers` with the WebAssembly backend, in a Web Worker, so the UI does not stall. Vite bundles the ONNX runtime's `.wasm` file next to the worker. The library keeps Hugging Face URLs (it checks files only on http(s) URLs), and its `env.fetch` sends each request to `hanobi-model://`. Main answers from `<userData>/Models` (`electron/models.js`) and downloads a missing file once. Only the Whisper repositories in `MODELS` can be fetched. Main grants the `media` permission only to Hanobi's own windows and only for audio. The renderer CSP allows `'wasm-unsafe-eval'`, `worker-src 'self'`, and `connect-src hanobi-model:`. Whisper here does not detect the language, so the user picks it (English by default). The output is capped at about 6 tokens per second of audio, so a decoder that repeats itself stops.
 

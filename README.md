@@ -32,6 +32,7 @@ Hanobi runs on macOS 12 Monterey and later, including Intel Macs. It pins Electr
   - API and local models can make files with the `hanobi__write_file` tool: text formats, `.html`, `.docx`, `.rtf`, `.odt`, and `.pdf`.
   - File cards show files you attach, files the model makes, and files a CLI agent writes. Each card has **Preview** (Quick Look), **Copy** (text, image, or the file itself), **Download**, **Open with default app**, and **Show in Finder**.
   - **Download** on a reply saves it as Markdown, Word, or PDF.
+- Voice input: click the microphone to start and click again to stop, or hold it to talk and release to stop. **⌘⇧D** works the same way, and Esc cancels. The text goes into the composer, so you can check it before you send. Whisper runs on this Mac (WebAssembly), so audio never leaves it. The first use downloads the model once from Hugging Face: Tiny (45 MB, the default on Intel Macs), Base (80 MB, the default on Apple Silicon), or Small (250 MB). Choose the model and the language you speak in **Settings → General**. macOS asks once for microphone access.
 - Desktop app:
   - Notifications, a Dock badge, and a Dock bounce when a reply finishes or needs your approval while Hanobi is in the background. Click a notification to open the conversation.
   - **⌥ Space** shows Hanobi from any app and hides it again. Change or turn off the shortcut in **Settings → General**.
@@ -112,8 +113,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, rules, and tests.
 
 ## Roadmap
 
-1. Live verification of each subscription CLI and API provider on real accounts.
-2. Voice input.
+1. Live verification of each API provider on real accounts.
 
 ## License
 

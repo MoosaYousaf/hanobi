@@ -3,7 +3,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const VERSION = 2;
-const empty = () => ({ version: VERSION, workspaces: [], threads: [], connections: [], mcpServers: [], modelCache: {}, preferences: { theme: 'system', palette: 'hanobi', accent: '#e0532c', suggestReplies: false, systemPrompt: '', lastModel: null } });
+const empty = () => ({ version: VERSION, workspaces: [], threads: [], connections: [], mcpServers: [], modelCache: {}, preferences: { theme: 'system', palette: 'hanobi', accent: '#e0532c', suggestReplies: false, systemPrompt: '', lastModel: null, voice: { model: '', language: 'en' } } });
 
 // Fills in fields added after a file was written. Workspaces from before Chat and Projects are code folders;
 // main marks the general Chats folder at startup.

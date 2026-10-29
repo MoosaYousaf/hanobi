@@ -557,3 +557,18 @@ body.resizing { cursor: col-resize; user-select: none; }
 .btn.shortcut.on { border-color: var(--accent); }
 .hint.warn { color: var(--warning); }
 .foot-btn.update { font-size: 12px; color: var(--text-2); }
+
+/* Voice input. The live microphone uses the accent; its ring grows with the input level. */
+.icon-btn.mic.live { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: 0 0 0 calc(2px + var(--level, 0) * 6px) color-mix(in srgb, var(--accent) 22%, transparent); transition: box-shadow .08s linear; }
+.icon-btn.mic.busy { color: var(--text-2); }
+.voice-status { font-size: 12px; color: var(--text-2); padding: 4px 4px 0; }
+.voice-models { display: grid; gap: 6px; margin: 8px 0; }
+.voice-model { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
+.voice-model.on { border-color: var(--accent); }
+.voice-model input { accent-color: var(--accent); }
+.voice-model-text { flex: 1; display: grid; gap: 1px; }
+.voice-model-text .hint { margin: 0; }
+.voice-model-state { font-size: 12px; }
+.voice-language { display: flex; align-items: center; gap: 10px; }
+.voice-language span { color: var(--text-2); }
+kbd { font: 500 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface); }

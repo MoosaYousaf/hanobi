@@ -30,7 +30,7 @@ fs.writeFileSync(path.join(process.env.HANOBI_USER_DATA, 'hanobi-data.json'), JS
     { id: 'm4', at: now, role: 'assistant', connectionId: 'claude-code', model: 'claude-opus-5-5', parts: [
       { type: 'tool', id: 'w', name: 'Write', input: { file_path: path.join(folder, 'report.md'), content: '# Report' }, output: 'File created', status: 'done' },
       fileSeed('out', 'totals.csv', 'region,total\nNorth,12\n'),
-      text('# Quarterly totals\n\n```csv totals.csv\nregion,total\nNorth,12\nSouth,9\n```\n\n```python\nprint("done")\n```')] }
+      text('# Quarterly totals\n\n```csv totals.csv\nregion,total\nNorth,12\nSouth,9\n```\n\n```python\nprint("done")\n```\n\n```html\n<p id="out">waiting</p><script>document.getElementById("out").textContent = "ran " + (typeof require) + " " + (typeof window.hanobi)</script>\n```')] }
   ] }]
 }));
 // The workspace is a Git repository with a GitHub origin. A fake gh answers with one pull request.
@@ -107,11 +107,21 @@ app.whenReady().then(async () => {
     await click(win, '.topbar [title="Changes"]');
     fs.writeFileSync(path.join(folder, 'report.md'), '# Report\n');
     await clickText(win, '.thread-row', 'Quarterly table');
-    await until(win, `[...document.querySelectorAll('.code-lang')].map(e => e.textContent).join() === 'totals.csv,Python'`, 'code blocks show a file name and a language');
+    await until(win, `[...document.querySelectorAll('.code-lang')].map(e => e.textContent).join() === 'totals.csv,Python,HTML'`, 'code blocks show a file name and a language');
     await until(win, `[...document.querySelectorAll('.file-card .file-name')].map(e => e.textContent).join() === 'brief.txt,report.md,totals.csv'`, 'file cards for an attachment, a written file, and a made file');
     await clickText(win, '.code-btn', 'Preview');
     await until(win, `[...document.querySelectorAll('.snippet-table td')].map(e => e.textContent).join() === 'North,12,South,9'`, 'CSV preview shows a table');
     await shot(win, '1d-files');
+    // Run opens the HTML snippet with scripts on, in its own window without Node.js or the Hanobi bridge.
+    const windowCount = BrowserWindow.getAllWindows().length;
+    await clickText(win, '.code-btn', 'Run');
+    let runWin;
+    for (let i = 0; i < 50 && !runWin; i++) { await sleep(100); runWin = BrowserWindow.getAllWindows().find(w => w.getTitle().startsWith('Run: ')); }
+    if (!runWin || BrowserWindow.getAllWindows().length !== windowCount + 1) throw new Error('Timed out: Run opens a window');
+    await until(runWin, `document.getElementById('out')?.textContent === 'ran undefined undefined'`, 'the snippet script runs without require or the Hanobi bridge');
+    const permission = await Promise.race([runWin.webContents.executeJavaScript(`navigator.permissions.query({ name: 'geolocation' }).then(p => p.state)`), sleep(3000).then(() => 'timeout')]);
+    if (permission !== 'denied') throw new Error(`Run window permissions are not denied: ${permission}`);
+    runWin.destroy();
     for (const extension of ['pdf', 'docx']) {
       saveTarget = path.join(ghBin, `reply.${extension}`);
       await click(win, '.msg.assistant .msg-actions [data-tip="Download"]');
@@ -226,7 +236,7 @@ app.whenReady().then(async () => {
     })()`);
     await until(win, `(${JSON.stringify(listed)}).at(-1) === [...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row .thread-title')][0].textContent`, 'dragging a conversation reorders the list');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar and preview, file cards, reply export to PDF and Word, desktop settings.\n');
+    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, preview, and isolated Run, file cards, reply export to PDF and Word, desktop settings.\n');
     app.exit(0);
   } catch (error) {
     if (errors.length) console.error('Console errors:\n' + errors.join('\n')); process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }

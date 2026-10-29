@@ -1,10 +1,10 @@
 import { memo, useState, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ChevronRight, Check, Copy, Wrench, CircleAlert, Ban, Clock, GitBranch, RotateCcw, Pencil, Download, Eye, Code } from 'lucide-react';
+import { ChevronRight, Check, Copy, Wrench, CircleAlert, Ban, Clock, GitBranch, RotateCcw, Pencil, Download, Eye, Code, Play } from 'lucide-react';
 import { Working } from './Spark.jsx';
 import { FileCard, ToolFiles, ExportMenu, exportText, markdownHtml, snippetName, previewKind, SnippetPreview, LABELS } from './Files.jsx';
-import { useStore, answerApproval, answerQuestion, guard } from '../store.js';
+import { useStore, answerApproval, answerQuestion, guard, call, toast } from '../store.js';
 
 const plugins = [remarkGfm];
 
@@ -27,6 +27,7 @@ function CodeBlock({ node, children, ...props }) {
     <div className="code-block">
       <div className="code-bar">
         <span className="code-lang">{named ? name : LABELS[extension] || language || 'Text'}</span>
+        {kind === 'html' ? <button className="code-btn tip tip-end" onClick={() => call('snippet:run', text, name).catch(toast)} data-tip="Run with JavaScript in its own window"><Play size={13} /> Run</button> : null}
         {kind ? <button className={`code-btn ${preview ? 'on' : ''}`} onClick={() => setPreview(!preview)} aria-pressed={preview}>{preview ? <><Code size={13} /> Code</> : <><Eye size={13} /> Preview</>}</button> : null}
         <button className="code-btn tip tip-end" onClick={download} aria-label={`Download ${name}`} data-tip={`Download ${name}`}><Download size={13} /></button>
         <button className="code-btn tip tip-end" onClick={copy} aria-label="Copy code" data-tip={copied ? 'Copied' : 'Copy code'}>{copied ? <Check size={13} /> : <Copy size={13} />}</button>

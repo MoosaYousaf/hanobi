@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Eye, Copy, Check, Download, MoreHorizontal, ExternalLink, FolderOpen, File, FileText, FileSpreadsheet, FileImage, FileCode, FileType } from 'lucide-react';
+import { Eye, Copy, Check, Download, MoreHorizontal, ExternalLink, FolderOpen, Play, File, FileText, FileSpreadsheet, FileImage, FileCode, FileType } from 'lucide-react';
 import { Menu, MenuItem } from './Menu.jsx';
 import { call, toast } from '../store.js';
 
@@ -58,6 +58,7 @@ export function FileCard({ file }) {
       </span>
       {menu ? (
         <Menu anchor={menu} onClose={() => setMenu(null)} label={`Options for ${file.name}`}>
+          {/^html?$/.test(ext(file.name)) ? <MenuItem icon={Play} onClick={() => { setMenu(null); act('files:run')(); }}>Run in a window</MenuItem> : null}
           <MenuItem icon={ExternalLink} onClick={() => { setMenu(null); act('files:open')(); }}>Open with default app</MenuItem>
           <MenuItem icon={FolderOpen} onClick={() => { setMenu(null); act('files:reveal')(); }}>Show in Finder</MenuItem>
         </Menu>
@@ -116,7 +117,7 @@ const EXTENSIONS = {
   sql: 'sql', go: 'go', rust: 'rs', rs: 'rs', java: 'java', kotlin: 'kt', swift: 'swift', c: 'c', cpp: 'cpp', 'c++': 'cpp', csharp: 'cs', cs: 'cs', ruby: 'rb', rb: 'rb',
   php: 'php', xml: 'xml', svg: 'svg', text: 'txt', txt: 'txt', plaintext: 'txt', diff: 'diff', dockerfile: 'Dockerfile', makefile: 'Makefile', lua: 'lua', r: 'r', dart: 'dart'
 };
-export const LABELS = { js: 'JavaScript', jsx: 'JSX', ts: 'TypeScript', tsx: 'TSX', py: 'Python', sh: 'Shell', md: 'Markdown', rs: 'Rust', rb: 'Ruby', cs: 'C#', cpp: 'C++', kt: 'Kotlin', yml: 'YAML', yaml: 'YAML', txt: 'Text' };
+export const LABELS = { html: 'HTML', css: 'CSS', json: 'JSON', csv: 'CSV', tsv: 'TSV', sql: 'SQL', svg: 'SVG', xml: 'XML', go: 'Go', js: 'JavaScript', jsx: 'JSX', ts: 'TypeScript', tsx: 'TSX', py: 'Python', sh: 'Shell', md: 'Markdown', rs: 'Rust', rb: 'Ruby', cs: 'C#', cpp: 'C++', kt: 'Kotlin', yml: 'YAML', yaml: 'YAML', txt: 'Text' };
 
 // The file name for a snippet: a name in the fence info (```python app.py or title="app.py"), else snippet.<ext>.
 export function snippetName(language, meta = '') {
@@ -143,6 +144,7 @@ export function parseTable(text, separator = ',') {
 }
 
 export function SnippetPreview({ kind, text }) {
+  // Scripts stay off here, inside Hanobi's window. Run opens the page with scripts in its own window.
   if (kind === 'html') return <iframe className="snippet-frame" sandbox="" srcDoc={text} title="HTML preview" />;
   if (kind === 'svg') return <div className="snippet-image"><img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`} alt="SVG preview" /></div>;
   if (kind === 'md') return <div className="prose snippet-prose"><Markdown remarkPlugins={plugins}>{text}</Markdown></div>;

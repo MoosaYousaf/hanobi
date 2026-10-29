@@ -28,6 +28,7 @@ Hanobi runs on macOS 12 Monterey and later, including Intel Macs. It pins Electr
 - Files in and out of conversations:
   - Attach any file with **+**, drag and drop, or paste. Hanobi copies it into the conversation. Text from PDF, Word, RTF, OpenDocument, PowerPoint, Excel, CSV, and text files goes to every model. API models get images as images. CLI agents also get each file's path.
   - Code blocks have their own bar: the language or file name, **Preview** for HTML, SVG, Markdown, and CSV, **Download** as a file with the right extension, and **Copy**.
+  - **Run** opens an HTML snippet or HTML file with JavaScript on, in its own window. That window has its own in-memory session, no Node.js, and no access to Hanobi, your files, or your keys. Permission requests (camera, microphone, location) are denied. It can load from the internet, so CDN libraries work. The inline **Preview** keeps scripts off.
   - API and local models can make files with the `hanobi__write_file` tool: text formats, `.html`, `.docx`, `.rtf`, `.odt`, and `.pdf`.
   - File cards show files you attach, files the model makes, and files a CLI agent writes. Each card has **Preview** (Quick Look), **Copy** (text, image, or the file itself), **Download**, **Open with default app**, and **Show in Finder**.
   - **Download** on a reply saves it as Markdown, Word, or PDF.

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, safeStorage, nativeTheme, clipboard, nativeImage, Notification, globalShortcut, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, safeStorage, nativeTheme, clipboard, nativeImage, Notification, globalShortcut, screen, session } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -133,6 +133,25 @@ const TEXT_COPY = /\.(txt|md|markdown|csv|tsv|json|jsonl|ya?ml|toml|xml|svg|html
 // The window for dialogs and Quick Look; a click can arrive while no window has focus.
 const activeWindow = () => BrowserWindow.getFocusedWindow() || [...windows].find(w => !w.isDestroyed());
 const threadFile = (threadId, file) => { const thread = store.thread(threadId); return files.resolve(thread.id, store.workspace(thread.workspaceId).path, file); };
+
+// Runs an HTML snippet with JavaScript on, in its own window. The page has an opaque origin (a data URL),
+// an in-memory session that shares nothing with Hanobi, no preload and no Node.js, and every permission request
+// (camera, microphone, location, notifications) is denied. It may load from the internet, so CDN libraries work.
+const MAX_RUN = 1.5 * 1024 * 1024;
+function runHtml(html, title = 'Snippet') {
+  html = String(html || '');
+  if (Buffer.byteLength(html) > MAX_RUN) throw new Error('The snippet is too large to run (1.5 MB at most).');
+  const ses = session.fromPartition('hanobi-run');
+  ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+  ses.setPermissionCheckHandler(() => false);
+  const win = new BrowserWindow({ width: 960, height: 720, title: `Run: ${String(title).slice(0, 80)}`, backgroundColor: '#ffffff',
+    webPreferences: { partition: 'hanobi-run', sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: true, webviewTag: false, spellcheck: false } });
+  win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:\/\//.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+  win.webContents.on('will-navigate', (event, url) => { event.preventDefault(); if (/^https?:\/\//.test(url)) shell.openExternal(url); });
+  win.webContents.on('page-title-updated', event => event.preventDefault());
+  win.loadURL(`data:text/html;charset=utf-8;base64,${Buffer.from(html).toString('base64')}`);
+  return win;
+}
 
 // HTML to PDF with Chromium's printer, in a hidden window with scripts off.
 async function printPdf(html) {
@@ -328,6 +347,8 @@ const handlers = {
     await files.render(target.filePath, /\.(docx|rtf|odt|pdf|html?)$/i.test(target.filePath) && html ? html : text);
     return target.filePath;
   },
+  'snippet:run': (html, title) => { runHtml(html, title); },
+  'files:run': async (threadId, file) => { const full = await threadFile(threadId, file); if (!/\.html?$/i.test(full)) throw new Error('Only HTML files can run.'); runHtml(fs.readFileSync(full, 'utf8'), path.basename(full)); },
   'update:check': () => checkUpdate(),
   'update:open': () => { if (update?.url && /^https:\/\/github\.com\//.test(update.url)) return shell.openExternal(update.url); },
   'open:external': url => { if (/^https:\/\//.test(url)) return shell.openExternal(url); },

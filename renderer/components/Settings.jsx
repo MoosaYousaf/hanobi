@@ -9,7 +9,7 @@ const sections = [
   { id: 'connectors', label: 'Connectors', icon: Plug },
   { id: 'general', label: 'General', icon: SlidersHorizontal }
 ];
-const ADDABLE = ['anthropic', 'openai', 'google', 'openrouter', 'ollama', 'lmstudio', 'custom'];
+const ADDABLE = ['anthropic', 'openai', 'google', 'openrouter', 'deepseek', 'mistral', 'groq', 'xai', 'github-models', 'ollama', 'lmstudio', 'custom'];
 
 function Status({ ok, children }) { return <span className={`status ${ok ? 'ok' : 'off'}`}><i />{children}</span>; }
 

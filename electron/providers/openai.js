@@ -9,7 +9,14 @@ function client(baseURL, apiKey) {
   return new OpenAI({ baseURL, apiKey: apiKey || 'not-needed', maxRetries: 2, defaultHeaders: baseURL.includes('openrouter.ai') ? { 'HTTP-Referer': 'https://github.com/MoosaYousaf/hanobi', 'X-Title': 'Hanobi' } : {} });
 }
 
-async function listModels(baseURL, apiKey) {
+// Some servers (GitHub Models) list models at a separate catalog URL instead of {baseURL}/models.
+async function listModels(baseURL, apiKey, modelsURL) {
+  if (modelsURL) {
+    const response = await fetch(modelsURL, { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' } });
+    if (!response.ok) throw new Error(`Model list failed: ${response.status} ${response.statusText}`);
+    const list = await response.json();
+    return (Array.isArray(list) ? list : list.data || []).map(m => ({ id: m.id, label: m.name || m.id })).sort((a, b) => a.id.localeCompare(b.id));
+  }
   const models = [];
   for await (const model of client(baseURL, apiKey).models.list()) models.push({ id: model.id.replace(/^models\//, ''), label: model.id.replace(/^models\//, '') });
   return models.sort((a, b) => a.id.localeCompare(b.id));

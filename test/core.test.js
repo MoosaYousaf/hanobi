@@ -64,6 +64,27 @@ test('CLI prompts never enter argv, so a prompt cannot act as an option', () => 
   assert.deepEqual(Object.keys(JSON.parse(mcp[mcp.indexOf('--mcp-config') + 1]).mcpServers), ['fs']);
 });
 
+test('GitHub Copilot: chosen session id, streamed text, reasoning, and tool results', () => {
+  const args = command('copilot', { sessionId: 'abc', model: 'auto', effort: 'low', mode: 'read' });
+  assert.deepEqual(args.slice(-2), ['--session-id', 'abc']);
+  assert.ok(args.includes('--deny-tool=write') && args.includes('--reasoning-effort'));
+  const draft = new Draft();
+  const events = [
+    { type: 'assistant.reasoning_delta', data: { deltaContent: 'Count files.' }, ephemeral: true },
+    { type: 'assistant.message', data: { messageId: 'm1', content: '', toolRequests: [{ toolCallId: 'c1', name: 'bash', arguments: { command: 'ls' } }] } },
+    { type: 'tool.execution_start', data: { toolCallId: 'c1', toolName: 'bash', arguments: { command: 'ls' } } },
+    { type: 'tool.execution_complete', data: { toolCallId: 'c1', success: true, result: { content: 'a.txt' } } },
+    { type: 'assistant.message_start', data: { messageId: 'm2' }, ephemeral: true },
+    { type: 'assistant.message_delta', data: { messageId: 'm2', deltaContent: 'There is ' }, ephemeral: true },
+    { type: 'assistant.message_delta', data: { messageId: 'm2', deltaContent: '1 file.' }, ephemeral: true },
+    { type: 'assistant.message', data: { messageId: 'm2', content: 'There is 1 file.', toolRequests: [] } },
+    { type: 'result', data: {} }
+  ];
+  for (const event of events) apply('copilot', event, draft);
+  assert.deepEqual(draft.final().map(p => [p.type, p.text ?? p.output]), [['thinking', 'Count files.'], ['tool', 'a.txt'], ['text', 'There is 1 file.']]);
+  assert.throws(() => apply('copilot', { type: 'session.error', data: { message: 'Quota exceeded' } }, new Draft()), /Quota/);
+});
+
 test('Gemini delta chunks join into one text block', () => {
   const draft = new Draft();
   for (const content of ['Hel', 'lo wor', 'ld']) apply('gemini', { type: 'message', role: 'assistant', content, delta: true }, draft);
@@ -93,6 +114,7 @@ test('history replays natively on the same provider and as text elsewhere', () =
 test('settings validation accepts listed CLI models and any API model id', () => {
   assert.throws(() => validateSettings({ preset: 'gemini' }, { model: '', effort: 'high', mode: 'auto' }));
   assert.throws(() => validateSettings({ preset: 'claude-code' }, { model: 'made-up', effort: '', mode: 'auto' }));
+  assert.equal(validateSettings({ preset: 'copilot' }, { model: 'gpt-6-luna', effort: '', mode: 'auto' }).model, 'gpt-6-luna');
   assert.deepEqual(validateSettings({ preset: 'ollama' }, { model: 'qwen3:8b', effort: '', mode: 'ask' }), { model: 'qwen3:8b', effort: '', mode: 'ask' });
 });
 

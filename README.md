@@ -6,8 +6,8 @@ Hanobi is a lightweight desktop harness for the language models you use. One win
 
 | Route | How it connects | Examples |
 | --- | --- | --- |
-| Subscription | Runs the official CLI with your existing sign-in. Hanobi never reads CLI tokens. | Claude Code (Claude Pro/Max), Codex (ChatGPT), Gemini CLI |
-| API key | Calls the provider API. Keys are encrypted with the macOS Keychain. | Anthropic, OpenAI, Google Gemini, OpenRouter, any OpenAI-compatible URL |
+| Subscription | Runs the official CLI with your existing sign-in. Hanobi never reads CLI tokens. | Claude Code (Claude Pro/Max), Codex (ChatGPT), GitHub Copilot, Gemini CLI |
+| API key | Calls the provider API. Keys are encrypted with the macOS Keychain. | Anthropic, OpenAI, Google Gemini, OpenRouter, DeepSeek, Mistral, Groq, xAI Grok, GitHub Models, any OpenAI-compatible URL |
 | Local | Calls a model server on this Mac. No key, no network. | Ollama, LM Studio |
 
 Hanobi runs on macOS 12 Monterey and later, including Intel Macs. It pins Electron 40.3.0 to keep macOS 12 support.
@@ -36,6 +36,10 @@ Then open **Settings → Models**:
 - **Subscriptions:** install a CLI (for example, `claude`) and sign in from Terminal. Hanobi finds it automatically. Click the rescan button after you install one.
 - **API keys:** click **Add a provider**, choose a provider, and paste a key.
 - **Local:** start Ollama or LM Studio, then add it. Hanobi lists the downloaded models.
+
+GitHub Copilot needs its CLI: run `npm install -g @github/copilot`. It uses your GitHub sign-in (`gh auth login`). Each turn uses premium requests from your Copilot plan. Copilot loads its own MCP servers from `~/.copilot/mcp-config.json`.
+
+Microsoft Copilot (the consumer app) has no API for other apps, so Hanobi cannot connect to it. Microsoft 365 Copilot has a preview Chat API, but only for work accounts with a Microsoft 365 Copilot license.
 
 Gemini CLI does not serve personal Google AI plans now. Those accounts moved to Antigravity. To use Gemini with a personal account, add a **Google Gemini API** key.
 

@@ -39,7 +39,7 @@ class Runner {
     const { connection, preset } = this.resolve(connectionId);
     if (preset.kind === 'cli') return preset.models;
     const key = this.secrets.get(`key:${connectionId}`);
-    const models = preset.kind === 'anthropic' ? await anthropic.listModels(key) : await openai.listModels(connection.baseURL || preset.baseURL, key);
+    const models = preset.kind === 'anthropic' ? await anthropic.listModels(key) : await openai.listModels(connection.baseURL || preset.baseURL, key, preset.modelsURL);
     this.store.data.modelCache[connectionId] = { at: Date.now(), models };
     this.store.save();
     return models;

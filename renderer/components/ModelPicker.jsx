@@ -28,7 +28,7 @@ function ConnectionGroup({ connection, query, current, onPick }) {
   const load = guard(async () => { setLoading(true); try { setModels(await call('models:refresh', connection.id)); } finally { setLoading(false); } });
   const q = query.trim().toLowerCase();
   const visible = (models || []).filter(m => !q || m.id.toLowerCase().includes(q) || m.label.toLowerCase().includes(q) || connection.name.toLowerCase().includes(q));
-  const custom = q && preset.kind !== 'cli' && connection.ready && !visible.some(m => m.id.toLowerCase() === q);
+  const custom = q && (preset.kind !== 'cli' || preset.customModels) && connection.ready && !visible.some(m => m.id.toLowerCase() === q);
   if (q && !visible.length && !custom) return null;
   return (
     <div className="pick-group">

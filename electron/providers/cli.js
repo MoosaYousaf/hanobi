@@ -1,4 +1,5 @@
 const { spawn } = require('node:child_process');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { replayPrompt } = require('./transcript');
@@ -42,6 +43,11 @@ function command(cli, { sessionId, model = '', effort = '', mode = 'auto', mcpSe
   if (cli === 'gemini') {
     const access = { default: ['--approval-mode', 'default'], read: ['--approval-mode', 'plan'], auto: ['--approval-mode', 'auto_edit'], full: ['--approval-mode', 'yolo'] }[mode];
     return ['-p', '', '--output-format', 'stream-json', ...access, ...modelArgs, ...(sessionId ? ['--resume', sessionId] : [])];
+  }
+  if (cli === 'copilot') {
+    const access = { default: [], read: ['--deny-tool=write', '--deny-tool=shell'], auto: ['--allow-tool=write'], full: ['--allow-all'] }[mode];
+    // Copilot accepts a caller-chosen session id, so a new session can be resumed by that same id later.
+    return ['--output-format', 'json', '--no-ask-user', '--disable-client-telemetry', ...access, ...modelArgs, ...(effort ? ['--reasoning-effort', effort] : []), '--session-id', sessionId];
   }
   throw new Error('Unknown CLI.');
 }
@@ -88,6 +94,17 @@ function apply(cli, event, draft) {
     if (event.type === 'tool_result') draft.toolResult(event.tool_id, { output: asText(event.output ?? event.error?.message), isError: event.status === 'error' });
     if (event.type === 'error') throw new Error(event.message || 'Gemini error.');
     if (event.type === 'result' && event.status === 'error') throw new Error(event.error?.message || 'Gemini run failed.');
+  } else if (cli === 'copilot') {
+    const d = event.data || {};
+    if (event.type === 'assistant.message_start' && draft.last('text')?.text) draft.parts.push({ type: 'text', text: '' });
+    else if (event.type === 'assistant.message_delta') { draft.streamed.add(d.messageId); draft.write('text', d.deltaContent); }
+    else if (event.type === 'assistant.reasoning_delta') draft.write('thinking', d.deltaContent);
+    else if (event.type === 'assistant.message') {
+      if (d.content && !draft.streamed.has(d.messageId)) draft.write('text', (draft.last('text')?.text ? '\n\n' : '') + d.content);
+      for (const t of d.toolRequests || []) draft.tool({ id: t.toolCallId, name: t.name, input: t.arguments });
+    } else if (event.type === 'tool.execution_start') draft.tool({ id: d.toolCallId, name: d.toolName, input: d.arguments });
+    else if (event.type === 'tool.execution_complete') draft.toolResult(d.toolCallId, { output: asText(d.result?.content ?? d.error?.message ?? d.error), isError: d.success === false });
+    else if (/error$/.test(event.type) && !event.ephemeral) throw new Error(d.message || d.error?.message || 'GitHub Copilot reported an error.');
   }
   return null;
 }
@@ -95,10 +112,11 @@ function apply(cli, event, draft) {
 function run({ preset, thread, history, prompt, cwd, mcpServers, draft, signal, onSession }) {
   const executable = cliPath(preset.cli);
   if (!executable) throw new Error(`${preset.name} is not installed or not on PATH.`);
-  const resume = thread.replay ? null : thread.sessionId;
+  let resume = thread.replay ? null : thread.sessionId;
+  if (preset.cli === 'copilot' && !resume) { resume = crypto.randomUUID(); onSession(resume); }
   const input = thread.replay || (!thread.sessionId && history.length) ? replayPrompt(history, prompt) : prompt;
   const args = command(preset.cli, { ...thread, sessionId: resume, mcpServers: preset.cli === 'claude' ? mcpServers : [] });
-  const child = spawn(executable, args, { cwd, env: { ...process.env, PATH: searchPath().join(path.delimiter), NO_COLOR: '1' }, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(executable, args, { cwd, env: { ...process.env, PATH: searchPath().join(path.delimiter), NO_COLOR: '1', COPILOT_AUTO_UPDATE: 'false' }, stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdin.end(input);
   let pending = '', stderr = '', failure = null;
   const handle = line => {

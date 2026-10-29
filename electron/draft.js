@@ -1,7 +1,11 @@
 // The one place where streamed output becomes message parts.
 // Parts: { type: 'text' | 'thinking', text } and { type: 'tool', id, name, input, output, status }.
 class Draft {
-  constructor() { this.parts = []; this.version = 0; }
+  constructor() {
+    this.parts = [];
+    this.version = 0;
+    this.streamed = new Set(); // message ids whose text already arrived as deltas
+  }
   last(type) { const part = this.parts.at(-1); return part?.type === type ? part : null; }
   // append=false replaces the current block of that type (used for CLIs that resend whole messages).
   write(type, text, append = true) {

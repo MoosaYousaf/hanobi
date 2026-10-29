@@ -3,6 +3,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { replayPrompt } = require('./transcript');
+const codexServer = require('./codex-server');
 
 // Apps opened from Finder get a minimal PATH, so look where CLIs and npx are usually installed.
 function searchPath() {
@@ -118,8 +119,10 @@ function run({ preset, thread, history, prompt, cwd, mcpServers, draft, signal, 
   let resume = thread.replay ? null : thread.sessionId;
   if (preset.cli === 'copilot' && !resume) { resume = crypto.randomUUID(); onSession(resume); }
   const input = thread.replay || (!thread.sessionId && history.length) ? replayPrompt(history, prompt) : prompt;
+  const env = { ...process.env, PATH: searchPath().join(path.delimiter), NO_COLOR: '1', COPILOT_AUTO_UPDATE: 'false' };
+  if (preset.cli === 'codex' && thread.mode === 'ask') return codexServer.run({ executable, env, cwd, input, resume, model: thread.model, effort: thread.effort, draft, signal, onSession, approve });
   const args = command(preset.cli, { ...thread, sessionId: resume, mcpServers: preset.cli === 'claude' ? mcpServers : [] });
-  const child = spawn(executable, args, { cwd, env: { ...process.env, PATH: searchPath().join(path.delimiter), NO_COLOR: '1', COPILOT_AUTO_UPDATE: 'false' }, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(executable, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
   // In ask mode stdin stays open for approval answers until the turn's result arrives.
   const asks = preset.cli === 'claude' && thread.mode === 'ask';
   child.stdin.on('error', () => {});

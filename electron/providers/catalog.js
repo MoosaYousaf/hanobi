@@ -5,7 +5,7 @@ const EFFORTS = ['', 'low', 'medium', 'high', 'xhigh', 'max'];
 const presets = {
   'claude-code': { kind: 'cli', cli: 'claude', name: 'Claude Code', route: 'subscription', efforts: EFFORTS, asks: true,
     models: [{ id: '', label: 'CLI default' }, { id: 'claude-opus-5-5', label: 'Opus 5.5' }, { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' }, { id: 'claude-haiku-5-5', label: 'Haiku 5.5' }, { id: 'claude-fable-5-1', label: 'Fable 5.1' }] },
-  codex: { kind: 'cli', cli: 'codex', name: 'Codex', route: 'subscription', efforts: EFFORTS,
+  codex: { kind: 'cli', cli: 'codex', name: 'Codex', route: 'subscription', efforts: EFFORTS, asks: true,
     models: [{ id: '', label: 'CLI default' }, { id: 'gpt-6.1-sol', label: 'GPT-6.1 Sol' }, { id: 'gpt-6-astra', label: 'GPT-6 Astra' }, { id: 'gpt-6.1-terra', label: 'GPT-6.1 Terra' }, { id: 'gpt-6-luna', label: 'GPT-6 Luna' }] },
   gemini: { kind: 'cli', cli: 'gemini', name: 'Gemini CLI', route: 'subscription', efforts: [''], note: 'Works with a Gemini API key or a Workspace account. Personal Google AI plans moved to Antigravity; use the Google Gemini API connection instead.',
     models: [{ id: '', label: 'CLI default' }, { id: 'auto', label: 'Auto' }, { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro' }, { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash' }] },

@@ -50,7 +50,7 @@ Gemini CLI does not serve personal Google AI plans now. Those accounts moved to 
 | CLI rules | The CLI's saved permission rules. Requests that need an interactive prompt are denied. | n/a |
 | Read only | Plan mode or read-only sandbox | n/a |
 | Auto edits (default for CLIs) | File edits allowed. Other actions follow the CLI. | n/a |
-| Ask first (default for APIs) | Claude Code only. Hanobi shows each permission prompt of the CLI, with Allow once, Always allow in this chat, and Deny. | Hanobi asks before each MCP tool call |
+| Ask first (default for APIs) | Claude Code and Codex. Hanobi shows each permission prompt of the CLI, with Allow once, Always allow in this chat, and Deny. Codex runs in the workspace-write sandbox and asks before untrusted commands. | Hanobi asks before each MCP tool call |
 | Full access / Allow tools | No approval and no sandbox. Hanobi asks you to confirm first. | Tools run without asking |
 
 ## Privacy and security
@@ -77,7 +77,7 @@ The packaged app is unsigned. macOS may ask you to allow it in **System Settings
 ## Roadmap
 
 1. Live verification of each subscription CLI and API provider on real accounts.
-2. Structured approval prompts for Codex (app-server) and GitHub Copilot (ACP). Claude Code has them in **Ask first**.
+2. Structured approval prompts for GitHub Copilot (ACP). Claude Code and Codex have them in **Ask first**.
 3. File checkpoints and rewind, aware of uncommitted Git changes.
 4. GitHub pull requests, branches, and review status.
 5. Project knowledge: attach files and folders to API conversations.

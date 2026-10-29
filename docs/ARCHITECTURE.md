@@ -14,6 +14,7 @@ electron/main.js
   │   └─ providers/
   │       ├─ catalog.js     presets for every route, access modes, settings validation
   │       ├─ cli.js         Claude Code / Codex / Gemini / Copilot CLI: argv, prompt on stdin, JSON event parsing, Claude Code control requests
+  │       ├─ codex-server.js  Codex Ask first through `codex app-server` JSON-RPC
   │       ├─ anthropic.js   Messages API through @anthropic-ai/sdk, manual streaming tool loop
   │       ├─ openai.js      every OpenAI-compatible server through the openai SDK
   │       └─ transcript.js  neutral history → provider messages; CLI replay prompt
@@ -34,7 +35,7 @@ Adapters write into a `Draft`. The runner sends the draft parts to the renderer 
 
 ## Approvals
 
-`Runner.ask` is the one approval flow. API runs call it before each MCP tool call. In **Ask first**, Claude Code runs with `--input-format stream-json --permission-prompt-tool stdio`. The CLI sends each permission prompt as a `can_use_tool` control request on stdout. Hanobi answers with a `control_response` on stdin, and closes stdin after the `result` event. **Always allow** adds the tool name to the thread's `allowedTools`.
+`Runner.ask` is the one approval flow. API runs call it before each MCP tool call. In **Ask first**, Claude Code runs with `--input-format stream-json --permission-prompt-tool stdio`. The CLI sends each permission prompt as a `can_use_tool` control request on stdout. Hanobi answers with a `control_response` on stdin, and closes stdin after the `result` event. In **Ask first**, Codex runs `codex app-server` with `approvalPolicy: untrusted` and the workspace-write sandbox. Hanobi answers `item/commandExecution/requestApproval` and `item/fileChange/requestApproval` with `accept` or `decline`. Other server requests get a JSON-RPC error. Thread ids are the same as in `codex exec`, so a thread can change mode and still resume. **Always allow** adds the tool name to the thread's `allowedTools`.
 
 ## Adding a provider
 

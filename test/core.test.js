@@ -107,7 +107,7 @@ test('Claude Code stream: deltas, tool calls, and tool results', () => {
 test('Claude Code ask mode: the prompt is a stdin message, and approval prompts come back as control requests', async () => {
   const args = command('claude', { mode: 'ask' });
   assert.deepEqual(args.slice(args.indexOf('--input-format'), args.indexOf('--input-format') + 4), ['--input-format', 'stream-json', '--permission-prompt-tool', 'stdio']);
-  assert.throws(() => validateSettings({ preset: 'codex' }, { model: '', mode: 'ask' }), /access mode/);
+  assert.throws(() => validateSettings({ preset: 'gemini' }, { model: '', mode: 'ask' }), /access mode/);
   // The fake CLI goes in $HOME/.local/bin, which comes first on the search path.
   const home = tmp('hanobi-home-'), bin = path.join(home, '.local/bin'), savedHome = process.env.HOME;
   fs.mkdirSync(bin, { recursive: true });
@@ -126,6 +126,28 @@ test('Claude Code ask mode: the prompt is a stdin message, and approval prompts 
       assert.equal(draft.parts.at(-1).text, answer);
     }
   } finally { process.env.HOME = savedHome; cli.cliPath('claude', true); }
+});
+
+test('Codex ask mode: app-server approval requests become approvals, and a decline stays declined', async () => {
+  assert.doesNotThrow(() => validateSettings({ preset: 'codex' }, { model: '', mode: 'ask' }));
+  const home = tmp('hanobi-home-'), bin = path.join(home, '.local/bin'), savedHome = process.env.HOME;
+  fs.mkdirSync(bin, { recursive: true });
+  fs.copyFileSync(path.join(__dirname, 'fixtures/fake-codex.cjs'), path.join(bin, 'codex'));
+  fs.chmodSync(path.join(bin, 'codex'), 0o755);
+  process.env.HOME = home;
+  try {
+    assert.equal(cli.cliPath('codex', true), path.join(bin, 'codex'));
+    for (const answer of ['allow', 'deny']) {
+      const draft = new Draft(), asked = [], sessions = [];
+      await cli.run({ preset: presets.codex, thread: { mode: 'ask', model: '', effort: '' }, history: [], prompt: 'ls', cwd: home, mcpServers: [], draft,
+        signal: new AbortController().signal, onSession: id => sessions.push(id),
+        approve: request => { asked.push(request); assert.equal(draft.parts[0].status, 'pending'); return { decision: Promise.resolve(answer), cancel() {} }; } });
+      assert.deepEqual(sessions, ['th1']);
+      assert.deepEqual(asked.map(r => [r.callId, r.name, r.input, r.description]), [['c1', 'Command', 'ls', 'Needs approval']]);
+      assert.equal(draft.parts[0].status, answer === 'allow' ? 'done' : 'denied');
+      assert.equal(draft.parts.at(-1).text, answer === 'allow' ? 'accept' : 'decline');
+    }
+  } finally { process.env.HOME = savedHome; cli.cliPath('codex', true); }
 });
 
 test('history replays natively on the same provider and as text elsewhere', () => {

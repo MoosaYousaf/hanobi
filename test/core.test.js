@@ -326,3 +326,27 @@ test('projects: instructions files for CLIs, documents, and the API context', ()
   assert.ok(command('codex', { mode: 'full', chat: true }).includes('read-only'));
   assert.equal(migrate({ version: 2, workspaces: [{ id: 'w', name: 'x', path: '/x' }] }).workspaces[0].kind, 'code');
 });
+
+test('context usage: Claude Code stream, Codex rollout file, Copilot session log', () => {
+  const usage = require('../electron/providers/usage');
+  const draft = new Draft();
+  apply('claude', { type: 'assistant', message: { content: [], usage: { input_tokens: 10, cache_read_input_tokens: 900, cache_creation_input_tokens: 80, output_tokens: 10 } } }, draft);
+  apply('claude', { type: 'assistant', parent_tool_use_id: 'sub', message: { content: [], usage: { input_tokens: 99999 } } }, draft);
+  apply('claude', { type: 'result', session_id: 's', modelUsage: { 'claude-opus-5-5': { contextWindow: 1000000 } } }, draft);
+  assert.deepEqual(draft.usage, { used: 1000, window: 1000000 });
+
+  const home = tmp('hanobi-usage-');
+  const day = path.join(home, 'codex/sessions/2026/10/28');
+  fs.mkdirSync(day, { recursive: true });
+  const token = (input, output) => JSON.stringify({ type: 'event_msg', payload: { type: 'token_count', info: { last_token_usage: { input_tokens: input, output_tokens: output }, model_context_window: 475000 } } });
+  fs.writeFileSync(path.join(day, 'rollout-2026-10-28T10-00-00-th9.jsonl'), [token(100, 5), '{"type":"response_item"}', token(300, 20), ''].join('\n'));
+  assert.deepEqual(usage.codex('th9', path.join(home, 'codex')), { used: 320, window: 475000 });
+  assert.equal(usage.codex('missing', path.join(home, 'codex')), null);
+
+  fs.mkdirSync(path.join(home, 'copilot/session-state/s1'), { recursive: true });
+  fs.writeFileSync(path.join(home, 'copilot/session-state/s1/events.jsonl'), JSON.stringify({ type: 'session.usage_record', data: { usage: { inputTokens: 12929, outputTokens: 141, maxPromptTokens: 272000 } } }) + '\n');
+  assert.deepEqual(usage.copilot('s1', path.join(home, 'copilot')), { used: 13070, window: 272000 });
+  assert.equal(usage.contextWindow('claude-haiku-4-5'), 200000);
+  assert.equal(usage.contextWindow('claude-sonnet-5-5'), 1000000);
+  assert.equal(usage.contextWindow('gpt-6-luna'), null);
+});

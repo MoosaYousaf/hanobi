@@ -156,8 +156,10 @@ export async function deleteThread(thread) {
   closePane(thread.id);
 }
 
-// Focus mode: one pane, edge to edge, no sidebar or toolbars, in macOS full screen. Escape or the shortcut leaves it.
+// Focus mode: one pane, edge to edge, no sidebar or toolbars, in macOS full screen. Escape or the shortcut leaves it
+// and keeps full screen.
 export function toggleFocus(on = !state.ui.focus) {
   setUi({ focus: on });
-  call('window:fullscreen', on).catch(() => {});
+  // Leaving focus mode keeps the window as it is; only the layout inside the app changes.
+  if (on) call('window:fullscreen', true).catch(() => {});
 }

@@ -47,6 +47,8 @@ async function run({ thread, history, apiKey, system, tools, callTool, draft, si
       if (error instanceof APIError || signal.aborted || jsonRetries++ >= 2) throw error;
       continue;
     }
+    const u = message.usage || {};
+    draft.usage = { used: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.output_tokens || 0), window: null };
     messages.push({ role: 'assistant', content: message.content });
     const uses = message.content.filter(b => b.type === 'tool_use');
     if (message.stop_reason === 'refusal') { draft.write('text', '\n\nThe model declined this request.'); break; }

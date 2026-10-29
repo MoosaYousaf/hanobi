@@ -13,7 +13,7 @@ function CodeBlock({ children, ...props }) {
   const copy = () => { navigator.clipboard.writeText(ref.current?.innerText || ''); setCopied(true); setTimeout(() => setCopied(false), 1400); };
   return (
     <div className="code-block">
-      <button className="code-copy" onClick={copy} title="Copy code">{copied ? <Check size={13} /> : <Copy size={13} />}</button>
+      <button className="code-copy tip tip-end" onClick={copy} aria-label="Copy code" data-tip={copied ? 'Copied' : 'Copy code'}>{copied ? <Check size={13} /> : <Copy size={13} />}</button>
       <pre ref={ref} {...props}>{children}</pre>
     </div>
   );
@@ -141,7 +141,7 @@ const textOf = message => message.parts.filter(p => p.type === 'text').map(p => 
 
 // An icon button whose name shows in a tooltip on hover.
 function Action({ label, onClick, children, pressed }) {
-  return <button className="msg-action" aria-label={label} data-tip={label} aria-pressed={pressed} onClick={onClick}>{children}</button>;
+  return <button className="msg-action tip" aria-label={label} data-tip={label} aria-pressed={pressed} onClick={onClick}>{children}</button>;
 }
 
 function CopyAction({ message }) {

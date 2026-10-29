@@ -30,7 +30,9 @@ Hanobi runs on macOS 12 Monterey and later, including Intel Macs. It pins Electr
 - Light and dark modes that follow macOS. Theme palettes: Hanobi, Gemini style, ChatGPT style, DeepSeek style, and a custom accent color.
 - A **…** menu on each conversation in the sidebar: Rename, Open in split pane, Pin to top, Move to project or workspace, and Delete.
 - Split panes: up to four conversations side by side, each with its own model. Drag a divider to resize; double-click it to make the panes equal (`⌘D` opens a new pane).
-- Focus mode (`⇧⌘F`): one conversation edge to edge in full screen, with no sidebar or toolbars. `Esc` leaves it.
+- Drag a conversation in the sidebar to change its place in the list (or press `⌥↑` / `⌥↓` on a selected row). A moved list keeps its order; new conversations appear on top.
+- Focus mode (`⇧⌘F`): one conversation edge to edge in full screen, in a terminal layout: monospace text, prompt and reply both left to right. `Esc` leaves focus mode and keeps full screen.
+- Context usage ring next to the model: how full the model's context was after the last reply, for every model that reports tokens. Claude Code, Codex, and Copilot report the context size; for API models the size comes from a table (Claude) or is unknown.
 - Message actions on hover: Copy, Edit, Rewind, and Branch. Edit replaces the message and the replies after it.
 - Multiple windows and keyboard shortcuts (`⌘N`, `⌘D`, `⇧⌘F`, `⌘,`, `⌘\`).
 

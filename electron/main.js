@@ -126,6 +126,13 @@ const handlers = {
     changed(); return threadView(thread.id);
   },
   'thread:pin': (id, pinned) => { store.thread(id).pinned = !!pinned; store.save(); changed(); },
+  // ids: one sidebar list in its new order. Ranks start at the current time, so new threads still sort above them.
+  'thread:reorder': ids => {
+    if (!Array.isArray(ids)) throw new Error('Expected a list of conversations.');
+    const top = Date.now();
+    ids.forEach((id, i) => { store.thread(String(id)).rank = top - i; });
+    store.save(); changed();
+  },
   // Moving changes the working folder, so a CLI session cannot continue; the next turn replays the transcript.
   'thread:move': (id, workspaceId) => {
     if (runner.runs.has(id)) throw new Error('Stop the reply first.');

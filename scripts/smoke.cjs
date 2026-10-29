@@ -13,7 +13,7 @@ fs.writeFileSync(path.join(process.env.HANOBI_USER_DATA, 'hanobi-data.json'), JS
   mcpServers: [{ id: 'notes', name: 'Notes', transport: 'stdio', command: 'node', args: [path.join(__dirname, '../test/fixtures/notes-server.cjs')], url: '', oauth: false, enabled: false }], modelCache: {}, preferences: { theme: 'system', systemPrompt: '', lastModel: null },
   threads: [{ id: 't1', workspaceId: 'w1', title: 'Parse the release notes', connectionId: 'claude-code', model: 'claude-opus-5-5', effort: 'high', mode: 'auto', sessionId: null, replay: false, createdAt: now, updatedAt: now, messages: [
     { id: 'm1', at: now, role: 'user', parts: [text('Find every breaking change in CHANGELOG.md and summarize them.')] },
-    { id: 'm2', at: now, role: 'assistant', connectionId: 'claude-code', model: 'claude-opus-5-5', suggestions: ['Show the migration steps', 'Check the 1.x releases too'], parts: [
+    { id: 'm2', at: now, role: 'assistant', connectionId: 'claude-code', model: 'claude-opus-5-5', usage: { used: 45200, window: 1000000 }, suggestions: ['Show the migration steps', 'Check the 1.x releases too'], parts: [
       { type: 'thinking', text: 'Read the changelog first, then group the entries by version.' },
       { type: 'tool', id: 'a', name: 'Read', input: { file_path: 'CHANGELOG.md' }, output: '## 2.0.0\n- Removed the legacy API', status: 'done' },
       { type: 'tool', id: 'b', name: 'Bash', input: { command: 'git log --oneline -5' }, output: 'fatal: not a git repository', status: 'error' },
@@ -52,6 +52,7 @@ app.whenReady().then(async () => {
     await shot(win, '1-home');
     await clickText(win, '.thread-row', 'Parse the release notes');
     await until(win, `document.querySelectorAll('.msg').length === 2 && !!document.querySelector('.prose table')`, 'messages render');
+    await until(win, `document.querySelector('.composer-row .usage-ring')?.dataset.tip === 'Context: 45.2k of 1M tokens (5%)'`, 'usage ring shows the context');
     await clickText(win, '.suggestion', 'Show the migration steps');
     await until(win, `document.querySelector('.composer textarea, textarea').value === 'Show the migration steps'`, 'a suggestion fills the composer');
     await win.webContents.executeJavaScript(`(() => { const t = document.querySelector('.composer textarea, textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, ''); t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
@@ -112,7 +113,7 @@ app.whenReady().then(async () => {
     await win.webContents.executeJavaScript(`(() => { const t = document.querySelector('.project .system-prompt'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, 'Write for customers.'); t.dispatchEvent(new Event('input', { bubbles: true })); t.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); t.blur(); })()`);
     await shot(win, '7-project');
     await clickText(win, '.project-head .btn', 'New chat');
-    await until(win, `document.querySelector('.composer-note')?.textContent.includes('project’s documents') && !!document.querySelector('.crumb-ws') && document.querySelector('.crumb-ws').textContent === 'Launch plan'`, 'project chat opens in chat mode');
+    await until(win, `![...document.querySelectorAll('.composer-row select')].some(s => s.title !== 'Effort') && !!document.querySelector('.crumb-ws') && document.querySelector('.crumb-ws').textContent === 'Launch plan'`, 'project chat opens in chat mode');
     const saved = JSON.parse(fs.readFileSync(path.join(process.env.HANOBI_USER_DATA, 'hanobi-data.json'), 'utf8'));
     await sleep(600);
     const project = JSON.parse(fs.readFileSync(path.join(process.env.HANOBI_USER_DATA, 'hanobi-data.json'), 'utf8')).workspaces.find(w => w.kind === 'project');
@@ -149,8 +150,19 @@ app.whenReady().then(async () => {
     await shot(win, '10-focus');
     await win.webContents.executeJavaScript(`document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
     await until(win, `!document.querySelector('.app.focus') && !!document.querySelector('.sidebar') && document.querySelectorAll('.pane').length === 2`, 'Escape leaves focus mode and the panes return');
+    // Drag the last conversation of a list above the first one.
+    const order = () => win.webContents.executeJavaScript(`[...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row .thread-title')].map(t => t.textContent)`);
+    const listed = await order();
+    await win.webContents.executeJavaScript(`(() => {
+      const rows = [...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row')];
+      const source = rows.at(-1), target = rows[0], data = new DataTransfer(), y = target.getBoundingClientRect().top + 2;
+      source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: data }));
+      target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: data, clientY: y }));
+      return new Promise(r => setTimeout(() => { target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data, clientY: y })); source.dispatchEvent(new DragEvent('dragend', { bubbles: true })); r(); }, 50));
+    })()`);
+    await until(win, `(${JSON.stringify(listed)}).at(-1) === [...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row .thread-title')][0].textContent`, 'dragging a conversation reorders the list');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode.\n');
+    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder.\n');
     app.exit(0);
   } catch (error) { process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }
 });

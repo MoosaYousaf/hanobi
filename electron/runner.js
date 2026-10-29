@@ -8,6 +8,7 @@ const git = require('./git');
 const suggest = require('./suggest');
 const projects = require('./projects');
 const openai = require('./providers/openai');
+const { contextWindow } = require('./providers/usage');
 
 const UPDATE_MS = 60;
 
@@ -129,7 +130,7 @@ class Runner {
       clearInterval(ticker);
       this.runs.delete(threadId);
       for (const [id, entry] of this.approvals) if (entry.threadId === threadId) this.answer(id, null);
-      const saved = message && this.store.append(threadId, { role: 'assistant', connectionId: thread.connectionId, model: thread.model, ...(draft.suggestions.length ? { suggestions: draft.suggestions } : {}), ...message });
+      const saved = message && this.store.append(threadId, { role: 'assistant', connectionId: thread.connectionId, model: thread.model, ...(draft.suggestions.length ? { suggestions: draft.suggestions } : {}), ...(draft.usage ? { usage: { used: draft.usage.used, window: draft.usage.window || contextWindow(thread.model) } } : {}), ...message });
       this.send('thread-changed', { threadId });
       this.send('run-state', { threadId, running: false, error: message?.error });
       return saved;

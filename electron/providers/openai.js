@@ -34,11 +34,15 @@ async function run({ thread, baseURL, history, apiKey, system, tools, callTool, 
       stream: true,
       messages: system ? [{ role: 'system', content: system }, ...messages] : messages,
       ...(definitions.length ? { tools: definitions } : {}),
-      ...(thread.effort ? { reasoning_effort: thread.effort } : {})
+      ...(thread.effort ? { reasoning_effort: thread.effort } : {}),
+      // Mistral rejects unknown fields and sends usage without asking.
+      ...(baseURL.includes('mistral.ai') ? {} : { stream_options: { include_usage: true } })
     }, { signal });
     let text = '', finish = null;
     const calls = [];
     for await (const chunk of stream) {
+      // The usage chunk comes last and has no choices.
+      if (chunk.usage) draft.usage = { used: (chunk.usage.prompt_tokens || 0) + (chunk.usage.completion_tokens || 0), window: null };
       const choice = chunk.choices?.[0];
       if (!choice) continue;
       const delta = choice.delta || {};

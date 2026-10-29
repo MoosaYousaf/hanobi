@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Menu, MenuItem, MenuSeparator } from './Menu.jsx';
 import { Plus, Settings as SettingsIcon, PanelLeftClose, FolderOpen, X, MessageSquare, Code2, MoreHorizontal, Pencil, Columns2, Pin, PinOff, FolderInput, Trash2, ChevronLeft, Check } from 'lucide-react';
 import { useStore, setUi, openThread, openInSplit, newThread, deleteThread, call, guard, askText, askConfirm } from '../store.js';
@@ -40,12 +40,34 @@ function ThreadMenu({ thread, anchor, onClose }) {
   );
 }
 
-const ThreadRow = memo(function ThreadRow({ thread, active, running }) {
+// Manual order: a dragged or moved list gets ranks, so its threads keep their places when they get new messages.
+// Threads without a rank (new ones) sort by their last activity and so appear on top.
+const sortKey = t => t.rank ?? t.updatedAt;
+const reorder = guard((ids, id, target) => {
+  const next = ids.filter(x => x !== id);
+  next.splice(Math.max(0, Math.min(next.length, target)), 0, id);
+  return call('thread:reorder', next);
+});
+let dragging = null; // { id, ids } of the row being dragged; a drop works only inside the same list
+
+const ThreadRow = memo(function ThreadRow({ thread, active, running, ids }) {
   const [anchor, setAnchor] = useState(null);
+  const [drop, setDrop] = useState(null); // 'before' | 'after'
   const open = guard(() => openThread(thread.id));
+  const index = ids.indexOf(thread.id);
+  const sameList = () => dragging && dragging.id !== thread.id && dragging.ids === ids;
   return (
-    <div className={`thread-row ${active ? 'active' : ''} ${anchor ? 'menu-open' : ''}`} role="button" tabIndex={0} title={thread.title}
-      onClick={open} onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) open(); }}>
+    <div className={`thread-row ${active ? 'active' : ''} ${anchor ? 'menu-open' : ''} ${drop ? `drop-${drop}` : ''}`} role="button" tabIndex={0} title={thread.title}
+      aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" draggable
+      onDragStart={e => { dragging = { id: thread.id, ids }; e.dataTransfer.effectAllowed = 'move'; e.currentTarget.classList.add('dragging'); }}
+      onDragEnd={e => { dragging = null; e.currentTarget.classList.remove('dragging'); }}
+      onDragOver={e => { if (!sameList()) return; e.preventDefault(); const r = e.currentTarget.getBoundingClientRect(); setDrop(e.clientY < r.top + r.height / 2 ? 'before' : 'after'); }}
+      onDragLeave={() => setDrop(null)}
+      onDrop={e => { if (!sameList()) return; e.preventDefault(); const from = ids.indexOf(dragging.id); const to = index + (drop === 'after' ? 1 : 0) - (from < index ? 1 : 0); setDrop(null); reorder(ids, dragging.id, to); }}
+      onClick={open} onKeyDown={e => {
+        if (e.key === 'Enter' && e.target === e.currentTarget) open();
+        if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.target === e.currentTarget) { e.preventDefault(); reorder(ids, thread.id, index + (e.key === 'ArrowUp' ? -1 : 1)); }
+      }}>
       {thread.pinned ? <Pin size={11} className="thread-pin" /> : null}
       <span className="thread-title">{thread.title}</span>
       {running ? <span className="dot-live" aria-label="Running" /> : <span className="thread-time">{ago(thread.updatedAt)}</span>}
@@ -67,6 +89,7 @@ function Workspace({ workspace, threads }) {
   const panes = useStore(s => s.ui.panes);
   const running = useStore(s => s.app.running);
   const shown = all ? threads : threads.slice(0, LIMIT);
+  const ids = useMemo(() => threads.map(t => t.id), [threads.map(t => t.id).join()]);
   const remove = guard(async () => { if (await askConfirm({ title: `Remove “${workspace.name}”?`, message: `Its ${threads.length} conversations are removed from Hanobi. The files on disk stay.`, confirmLabel: 'Remove', danger: true })) await call('workspace:remove', workspace.id); });
   return (
     <section className="ws">
@@ -80,7 +103,7 @@ function Workspace({ workspace, threads }) {
           <button className="icon-btn sm" title={workspace.kind === 'code' ? 'New conversation here' : 'New chat here'} onClick={guard(() => newThread(workspace.id))}><Plus size={14} /></button>
         </span>
       </div>
-      {shown.map(t => <ThreadRow key={t.id} thread={t} active={t.id === activeId || panes.includes(t.id)} running={running.includes(t.id)} />)}
+      {shown.map(t => <ThreadRow key={t.id} thread={t} ids={ids} active={t.id === activeId || panes.includes(t.id)} running={running.includes(t.id)} />)}
       {threads.length > LIMIT ? <button className="ws-more" onClick={() => setAll(!all)}>{all ? 'Show less' : `Show ${threads.length - LIMIT} more`}</button> : null}
       {!threads.length ? <div className="ws-empty">No conversations yet</div> : null}
     </section>
@@ -88,13 +111,14 @@ function Workspace({ workspace, threads }) {
 }
 
 function Pinned({ threads }) {
+  const ids = useMemo(() => threads.map(t => t.id), [threads.map(t => t.id).join()]);
   const activeId = useStore(s => s.ui.threadId);
   const panes = useStore(s => s.ui.panes);
   const running = useStore(s => s.app.running);
   return (
     <section className="ws">
       <div className="ws-head"><span className="ws-name">Pinned</span></div>
-      {threads.map(t => <ThreadRow key={t.id} thread={t} active={t.id === activeId || panes.includes(t.id)} running={running.includes(t.id)} />)}
+      {threads.map(t => <ThreadRow key={t.id} thread={t} ids={ids} active={t.id === activeId || panes.includes(t.id)} running={running.includes(t.id)} />)}
     </section>
   );
 }
@@ -106,7 +130,7 @@ export function Sidebar() {
   const workspaces = useStore(s => s.app.workspaces);
   const threads = useStore(s => s.app.threads);
   const view = useStore(s => s.ui.view);
-  const sorted = threads.toSorted((a, b) => b.updatedAt - a.updatedAt);
+  const sorted = threads.toSorted((a, b) => sortKey(b) - sortKey(a));
   const shown = workspaces.filter(w => inView(w, view)).toSorted((a, b) => (a.kind === 'chats') - (b.kind === 'chats'));
   const chats = workspaces.find(w => w.kind === 'chats');
   const pinned = sorted.filter(t => t.pinned && shown.some(w => w.id === t.workspaceId));

@@ -16,6 +16,7 @@ electron/main.js
   │       ├─ cli.js         Claude Code / Codex / Gemini / Copilot CLI: argv, prompt on stdin, JSON event parsing, Claude Code control requests
   │       ├─ codex-server.js  Codex Ask first through `codex app-server` JSON-RPC
   │       ├─ copilot-acp.js   Copilot Ask first through `copilot --acp` (Agent Client Protocol)
+  │       ├─ usage.js         Context usage: Codex and Copilot session files, Claude context sizes
   │       ├─ anthropic.js   Messages API through @anthropic-ai/sdk, manual streaming tool loop
   │       ├─ openai.js      every OpenAI-compatible server through the openai SDK
   │       └─ transcript.js  neutral history → provider messages; CLI replay prompt
@@ -57,3 +58,7 @@ Before each run in a code workspace, `git.snapshot` copies the real index (with 
 - If the provider has an OpenAI-compatible endpoint, add a preset to `catalog.js` with `kind: 'openai'` and its `baseURL`. No other change is needed.
 - For a new protocol, add an adapter with `run()` and `listModels()`, and add a branch in `runner.execute`.
 - For a new CLI, add a preset with `kind: 'cli'`, then add its argv in `cli.command` and its event parsing in `cli.apply`.
+
+## Context usage
+
+Each saved assistant message can carry `usage: { used, window }`: the tokens of the last model call in the turn (input, cache, and output) and the context size. Claude Code reports both in its stream (`assistant` message usage, `result.modelUsage[].contextWindow`). Anthropic and OpenAI-compatible APIs report `used` (OpenAI-compatible servers get `stream_options.include_usage`, except Mistral). Codex and Copilot do not stream usage; after the turn `usage.js` reads the last `token_count` event of the Codex rollout file or the last `session.usage_record` of the Copilot session log. When the provider gives no size, the runner uses the Claude table in `usage.js`. The composer shows the last message's usage as a ring.

@@ -5,6 +5,7 @@ const path = require('node:path');
 const { replayPrompt } = require('./transcript');
 const codexServer = require('./codex-server');
 const copilotAcp = require('./copilot-acp');
+const usage = require('./usage');
 
 // Apps opened from Finder get a minimal PATH, so look where CLIs and npx are usually installed.
 function searchPath() {
@@ -71,6 +72,9 @@ function apply(cli, event, draft) {
       if (e?.type === 'content_block_delta' && e.delta?.type === 'text_delta') draft.write('text', e.delta.text);
       if (e?.type === 'content_block_delta' && e.delta?.type === 'thinking_delta') draft.write('thinking', e.delta.thinking);
     } else if (event.type === 'assistant') {
+      // The main agent's last call shows how full the context is. Subagent calls have their own context.
+      const u = event.message?.usage;
+      if (u && !event.parent_tool_use_id) draft.usage = { used: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.output_tokens || 0), window: draft.usage?.window ?? null };
       // Text already arrived as deltas; only tool calls are taken from the full message.
       for (const block of event.message?.content || []) if (block.type === 'tool_use') draft.tool({ id: block.id, name: block.name, input: block.input });
     } else if (event.type === 'user') {
@@ -78,6 +82,8 @@ function apply(cli, event, draft) {
     } else if (event.type === 'result') {
       if (event.is_error) throw new Error(asText(event.result) || 'Claude Code reported an error.');
       if (!draft.hasText() && event.result) draft.write('text', event.result);
+      const window = Math.max(0, ...Object.values(event.modelUsage || {}).map(m => m.contextWindow || 0));
+      if (draft.usage && window) draft.usage.window = window;
       return event.session_id;
     }
   } else if (cli === 'codex') {
@@ -120,7 +126,15 @@ const DECLINED = 'The user declined this tool call.';
 const NOT_ASKED = 'This access mode does not allow actions that need approval. The user can choose Ask first to approve them.';
 const SKIPPED = 'The user skipped the questions.';
 
-function run({ preset, thread, history, prompt, cwd, chat = false, mcpServers, draft, signal, onSession, approve, question }) {
+// Codex and Copilot do not stream context usage; their session files have it after the turn.
+async function run(options) {
+  let session = options.thread.sessionId;
+  const result = await runTurn({ ...options, onSession: id => { session = id; options.onSession(id); } });
+  if (!options.draft.usage && !result.stopped) options.draft.usage = usage.fromSession(options.preset.cli, session);
+  return result;
+}
+
+function runTurn({ preset, thread, history, prompt, cwd, chat = false, mcpServers, draft, signal, onSession, approve, question }) {
   const executable = cliPath(preset.cli);
   if (!executable) throw new Error(`${preset.name} is not installed or not on PATH.`);
   let resume = thread.replay ? null : thread.sessionId;

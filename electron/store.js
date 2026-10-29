@@ -102,6 +102,7 @@ class Store {
     this.save();
     return value;
   }
+  patchMessage(id, messageId, patch) { const message = this.thread(id).messages.find(m => m.id === messageId); if (message) { Object.assign(message, patch); this.save(); } }
   update(id, patch) { Object.assign(this.thread(id), patch, { updatedAt: Date.now() }); this.save(); }
   removeThread(id) { this.thread(id); this.data.threads = this.data.threads.filter(t => t.id !== id); this.save(); }
   // The branch ends just before the chosen user message, so the user can edit and resend it.

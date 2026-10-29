@@ -1,13 +1,16 @@
 const { execFile } = require('node:child_process');
 const fs = require('node:fs/promises');
+const os = require('node:os');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
-function git(cwd, args) {
+function git(cwd, args, { env, input, timeout = 15000 } = {}) {
   return new Promise((resolve, reject) => {
-    execFile('git', args, { cwd, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024, timeout: 15000 }, (error, stdout, stderr) => {
+    const child = execFile('git', args, { cwd, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024, timeout, env: env && { ...process.env, ...env } }, (error, stdout, stderr) => {
       if (error) reject(new Error((stderr || stdout || error.message).trim()));
       else resolve(stdout);
     });
+    if (input !== undefined) child.stdin.end(input);
   });
 }
 const root = async cwd => (await git(cwd, ['rev-parse', '--show-toplevel'])).trim();
@@ -75,4 +78,43 @@ async function commit(cwd, message) {
   return (await git(await root(cwd), ['commit', '-m', message])).trim();
 }
 
-module.exports = { status, diff, stage, commit, parseStatus, githubUrl };
+// Checkpoints use a private index file, so the user's index, branches, and stash never change.
+// A checkpoint is a tree of every tracked and untracked file that .gitignore does not exclude.
+// Git keeps unreferenced trees for at least two weeks (gc.pruneExpire), so older checkpoints can be gone.
+async function withIndex(top, fn) {
+  const index = path.join(os.tmpdir(), `hanobi-index-${crypto.randomUUID()}`);
+  try { return await fn({ GIT_INDEX_FILE: index }); } finally { await fs.rm(index, { force: true }); }
+}
+
+async function snapshot(cwd) {
+  const top = await root(cwd);
+  const scope = path.relative(top, await fs.realpath(cwd)) || '.';
+  const tree = await withIndex(top, async env => {
+    // Starting from a copy of the real index lets git reuse its file stat cache.
+    const real = path.resolve(top, (await git(top, ['rev-parse', '--git-path', 'index'])).trim());
+    await fs.copyFile(real, env.GIT_INDEX_FILE).catch(() => {});
+    await git(top, ['add', '-A'], { env, timeout: 120000 });
+    return (await git(top, ['write-tree'], { env })).trim();
+  });
+  return { root: top, scope, tree };
+}
+
+// Makes the workspace folder match a checkpoint: changed files return, files created after it are deleted.
+// Only the workspace folder changes, even when the repository is larger. Ignored files stay as they are.
+async function restore(cwd, checkpoint) {
+  const current = await snapshot(cwd);
+  if (current.root !== checkpoint.root) throw new Error('This checkpoint belongs to another repository.');
+  const top = current.root;
+  await git(top, ['cat-file', '-e', `${checkpoint.tree}^{tree}`]).catch(() => { throw new Error('This checkpoint is no longer in the repository.'); });
+  const fields = (await git(top, ['diff-tree', '-r', '-z', '--no-renames', '--name-status', current.tree, checkpoint.tree, '--', checkpoint.scope || '.'])).split('\0').filter(Boolean);
+  const removed = [], restored = [];
+  for (let i = 0; i < fields.length; i += 2) (fields[i] === 'D' ? removed : restored).push(fields[i + 1]);
+  for (const file of removed) await fs.rm(path.join(top, file), { force: true });
+  if (restored.length) await withIndex(top, async env => {
+    await git(top, ['read-tree', checkpoint.tree], { env });
+    await git(top, ['checkout-index', '-f', '-z', '--stdin'], { env, input: restored.join('\0'), timeout: 120000 });
+  });
+  return { restored, removed };
+}
+
+module.exports = { status, diff, stage, commit, snapshot, restore, parseStatus, githubUrl };

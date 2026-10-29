@@ -1,7 +1,7 @@
 import { memo, useState, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ChevronRight, Check, Copy, Wrench, CircleAlert, Ban, Clock, GitBranch } from 'lucide-react';
+import { ChevronRight, Check, Copy, Wrench, CircleAlert, Ban, Clock, GitBranch, RotateCcw } from 'lucide-react';
 import { Working } from './Spark.jsx';
 import { useStore, answerApproval, guard } from '../store.js';
 
@@ -88,12 +88,31 @@ function Parts({ parts, live }) {
   });
 }
 
-export const Message = memo(function Message({ message, modelLabel, onBranch }) {
+// Rewind choices follow Claude Code: the conversation, the files, or both. Files need a checkpoint (Git workspaces).
+function RewindMenu({ message, onRewind, close }) {
+  const pick = options => { close(); onRewind(message, options); };
+  return (
+    <div className="rewind-menu" role="menu" onMouseLeave={close}>
+      <button role="menuitem" onClick={() => pick({ conversation: true })}>Rewind conversation<span>Remove this message and the replies after it.</span></button>
+      {message.checkpoint ? <>
+        <button role="menuitem" onClick={() => pick({ conversation: true, code: true })}>Rewind conversation and code<span>Also return the workspace files to how they were before this message.</span></button>
+        <button role="menuitem" onClick={() => pick({ conversation: false, code: true })}>Restore code only<span>Keep the conversation. Return the files.</span></button>
+      </> : <div className="rewind-note">No file checkpoint. Code rewind needs a Git workspace.</div>}
+    </div>
+  );
+}
+
+export const Message = memo(function Message({ message, modelLabel, onBranch, onRewind }) {
+  const [menu, setMenu] = useState(false);
   if (message.role === 'user') {
     return (
       <article className="msg user">
         <div className="user-bubble"><Parts parts={message.parts} /></div>
-        <button className="msg-action" title="Edit from here in a new branch" onClick={() => onBranch(message)}><GitBranch size={13} /> Branch</button>
+        <div className="msg-actions">
+          <button className="msg-action" title="Rewind to before this message" onClick={() => setMenu(!menu)}><RotateCcw size={13} /> Rewind</button>
+          <button className="msg-action" title="Edit from here in a new branch" onClick={() => onBranch(message)}><GitBranch size={13} /> Branch</button>
+          {menu ? <RewindMenu message={message} onRewind={onRewind} close={() => setMenu(false)} /> : null}
+        </div>
       </article>
     );
   }

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, Square, Paperclip, X, Folder } from 'lucide-react';
 import { useStore, call, guard, toast } from '../store.js';
 import { ModelPicker } from './ModelPicker.jsx';
@@ -15,7 +15,8 @@ const readImage = file => new Promise((resolve, reject) => {
 
 // Text drafts survive switching between conversations.
 const drafts = new Map();
-export const setDraft = (threadId, text) => drafts.set(threadId, text);
+// A mounted composer listens, so a draft set from outside (rewind, a suggestion) shows at once.
+export const setDraft = (threadId, text) => { drafts.set(threadId, text); window.dispatchEvent(new CustomEvent('hanobi-draft', { detail: threadId })); };
 
 export function Composer({ thread, workspace, modelLabel }) {
   const running = useStore(s => !!s.live[thread.id]);
@@ -30,6 +31,11 @@ export function Composer({ thread, workspace, modelLabel }) {
   const mode = modes.find(m => m.id === thread.mode) || modes[0];
 
   const update = value => { setText(value); drafts.set(thread.id, value); };
+  useEffect(() => {
+    const onDraft = e => { if (e.detail === thread.id) { setText(drafts.get(thread.id) ?? ''); input.current?.focus(); } };
+    window.addEventListener('hanobi-draft', onDraft);
+    return () => window.removeEventListener('hanobi-draft', onDraft);
+  }, [thread.id]);
   const attach = guard(async files => {
     if (isCli) throw new Error('Images work with API and local models. CLI agents read files from the workspace instead.');
     const added = await Promise.all([...files].map(readImage));

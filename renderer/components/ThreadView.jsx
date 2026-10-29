@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { PanelLeftOpen, GitCompare, Sparkles, Trash2, Pencil, FolderOpen } from 'lucide-react';
-import { useStore, setUi, loadThread, openThread, newThread, call, guard } from '../store.js';
+import { useStore, setUi, loadThread, openThread, newThread, call, guard, toast } from '../store.js';
 import { modelLabel } from '../labels.js';
 import { Message, LiveMessage } from './Message.jsx';
 import { Composer, setDraft } from './Composer.jsx';
@@ -53,6 +53,12 @@ export function ThreadView({ threadId }) {
     setDraft(id, message.parts.filter(p => p.type === 'text').map(p => p.text).join('\n\n'));
     await openThread(id);
   });
+  const rewind = guard(async (message, options) => {
+    if (options.code && !confirm('Return the workspace files to how they were before this message? Changes made after it, including your own, are lost. Ignored files stay.')) return;
+    const { text, files } = await call('thread:rewind', thread.id, message.id, options);
+    if (options.conversation) setDraft(thread.id, text);
+    if (files) toast(`Restored ${files.restored.length} and removed ${files.removed.length} files.`);
+  });
   const messages = thread.messages.slice(-count);
   return (
     <div className="thread">
@@ -67,7 +73,7 @@ export function ThreadView({ threadId }) {
               <p>{currentLabel} in <strong>{workspace.name}</strong>. Switch models below at any time, even mid-conversation.</p>
             </div>
           ) : null}
-          {messages.map(m => <Message key={m.id} message={m} modelLabel={m.role === 'assistant' ? modelLabel(app, m.connectionId || thread.connectionId, m.model ?? thread.model) : ''} onBranch={branch} />)}
+          {messages.map(m => <Message key={m.id} message={m} modelLabel={m.role === 'assistant' ? modelLabel(app, m.connectionId || thread.connectionId, m.model ?? thread.model) : ''} onBranch={branch} onRewind={rewind} />)}
           {running ? <LiveMessage threadId={threadId} modelLabel={currentLabel} /> : null}
         </div>
       </div>

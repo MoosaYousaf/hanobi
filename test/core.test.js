@@ -11,6 +11,7 @@ const { command, apply } = cli;
 const { toProvider, replayPrompt } = require('../electron/providers/transcript');
 const { presets, validateSettings } = require('../electron/providers/catalog');
 const git = require('../electron/git');
+const { Runner } = require('../electron/runner');
 
 const tmp = prefix => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 
@@ -185,5 +186,50 @@ test('git works from a repo subfolder with renames and spaces in names', async (
     assert.match(await git.diff(sub, 'app/café.txt', { staged: true }), /\+new/);
     await git.stage(sub, 'app/new name.txt', true);
     await assert.rejects(git.diff(sub, '../../etc/passwd', {}), /Invalid path/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('rewind restores workspace files from a checkpoint and leaves the real index and other folders alone', async () => {
+  const root = tmp('hanobi-rewind-');
+  const run = (...args) => { const r = spawnSync('git', args, { cwd: root, encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr); return r.stdout; };
+  const write = (file, text) => { fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true }); fs.writeFileSync(path.join(root, file), text); };
+  const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+  try {
+    run('init', '-q'); run('config', 'user.email', 't@example.com'); run('config', 'user.name', 'T');
+    write('.gitignore', 'build/\n'); write('app/a.txt', 'one\n'); write('other.txt', 'x\n');
+    run('add', '.'); run('commit', '-qm', 'init');
+    write('app/draft.txt', 'untracked before\n'); write('app/staged.txt', 'staged\n'); run('add', 'app/staged.txt');
+    const index = run('ls-files', '--stage');
+    const sub = path.join(root, 'app');
+    const checkpoint = await git.snapshot(sub);
+    assert.equal(checkpoint.scope, 'app');
+    // The model edits, creates, and deletes files; the user edits a file outside the workspace.
+    write('app/a.txt', 'two\n'); write('app/new.txt', 'new\n'); fs.rmSync(path.join(root, 'app/draft.txt')); write('build/out.js', 'ignored\n'); write('other.txt', 'y\n');
+    const files = await git.restore(sub, checkpoint);
+    assert.deepEqual([files.restored.sort(), files.removed], [['app/a.txt', 'app/draft.txt'], ['app/new.txt']]);
+    assert.equal(read('app/a.txt'), 'one\n');
+    assert.equal(read('app/draft.txt'), 'untracked before\n');
+    assert.ok(!fs.existsSync(path.join(root, 'app/new.txt')));
+    assert.equal(read('build/out.js'), 'ignored\n');
+    assert.equal(read('other.txt'), 'y\n');
+    assert.equal(run('ls-files', '--stage'), index);
+
+    // The runner rewinds the conversation to just before a user message and drops the CLI session.
+    const store = new Store(path.join(tmp('hanobi-data-'), 'data.json'));
+    const workspace = store.addWorkspace(sub);
+    const thread = store.addThread(workspace.id, { connectionId: 'claude-code', model: '', effort: '', mode: 'auto', sessionId: 's1' });
+    store.append(thread.id, { role: 'user', parts: [{ type: 'text', text: 'first' }] });
+    store.append(thread.id, { role: 'assistant', parts: [{ type: 'text', text: 'ok' }] });
+    const second = store.append(thread.id, { role: 'user', parts: [{ type: 'text', text: 'second' }], checkpoint });
+    store.append(thread.id, { role: 'assistant', parts: [{ type: 'text', text: 'done' }] });
+    write('app/a.txt', 'three\n');
+    const runner = new Runner({ store, secrets: {}, mcp: {}, send() {} });
+    const result = await runner.rewind(thread.id, second.id, { conversation: true, code: true });
+    assert.equal(result.text, 'second');
+    assert.equal(read('app/a.txt'), 'one\n');
+    assert.deepEqual(store.thread(thread.id).messages.map(m => m.parts[0].text), ['first', 'ok']);
+    assert.equal(store.thread(thread.id).sessionId, null);
+    assert.equal(store.thread(thread.id).replay, true);
+    await assert.rejects(runner.rewind(thread.id, store.thread(thread.id).messages[0].id, { code: true }), /no file checkpoint/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

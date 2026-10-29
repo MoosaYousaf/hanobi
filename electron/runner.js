@@ -4,6 +4,7 @@ const { presets, modesFor, validateSettings } = require('./providers/catalog');
 const { Draft } = require('./draft');
 const cli = require('./providers/cli');
 const anthropic = require('./providers/anthropic');
+const git = require('./git');
 const openai = require('./providers/openai');
 
 const UPDATE_MS = 60;
@@ -74,16 +75,19 @@ class Runner {
     if (preset.kind !== 'cli' && !thread.model) throw new Error('Choose a model first.');
 
     const history = thread.messages.slice();
-    this.store.append(threadId, { role: 'user', parts: [...images.map(i => ({ type: 'image', mediaType: i.mediaType, data: i.data, name: i.name })), ...(text ? [{ type: 'text', text }] : [])] });
+    const user = this.store.append(threadId, { role: 'user', parts: [...images.map(i => ({ type: 'image', mediaType: i.mediaType, data: i.data, name: i.name })), ...(text ? [{ type: 'text', text }] : [])] });
     const draft = new Draft();
     const controller = new AbortController();
     this.runs.set(threadId, { controller, draft });
     this.send('thread-changed', { threadId });
     this.send('run-state', { threadId, running: true });
-    this.execute({ threadId, thread, workspace, connection, preset, history, text, draft, controller });
+    this.execute({ threadId, thread, workspace, connection, preset, history, text, draft, controller, userId: user.id });
   }
 
-  async execute({ threadId, thread, workspace, connection, preset, history, text, draft, controller }) {
+  async execute({ threadId, thread, workspace, connection, preset, history, text, draft, controller, userId }) {
+    // A file checkpoint before the model acts makes "Rewind code" possible. Folders outside Git have none.
+    const checkpoint = await git.snapshot(workspace.path).catch(() => null);
+    if (checkpoint) this.store.patchMessage(threadId, userId, { checkpoint });
     let sent = -1;
     const ticker = setInterval(() => { if (draft.version !== sent) { sent = draft.version; this.send('run-update', { threadId, parts: draft.parts }); } }, UPDATE_MS);
     const finish = message => {
@@ -114,6 +118,22 @@ class Runner {
       if (controller.signal.aborted) finish(draft.parts.length ? { parts: draft.final(), stopped: true } : null);
       else finish({ parts: draft.final(), error: error.message || String(error) });
     }
+  }
+  // Rewinds to just before a user message: the conversation, the files, or both. Returns the message text for the composer.
+  // The CLI session continued past that point, so the next turn starts a new session from the transcript.
+  async rewind(threadId, messageId, { conversation = true, code = false } = {}) {
+    if (this.runs.has(threadId)) throw new Error('Stop the reply first.');
+    const thread = this.store.thread(threadId);
+    const index = thread.messages.findIndex(m => m.id === messageId && m.role === 'user');
+    if (index < 0) throw new Error('Message not found.');
+    const message = thread.messages[index];
+    let files = null;
+    if (code) {
+      if (!message.checkpoint) throw new Error('This message has no file checkpoint. Checkpoints exist only in Git workspaces.');
+      files = await git.restore(this.store.workspace(thread.workspaceId).path, message.checkpoint);
+    }
+    if (conversation) this.store.update(threadId, { messages: thread.messages.slice(0, index), sessionId: null, replay: index > 0 });
+    return { text: message.parts.filter(p => p.type === 'text').map(p => p.text).join('\n\n'), files };
   }
   stop(threadId) { this.runs.get(threadId)?.controller.abort(); }
   stopAll() { for (const run of this.runs.values()) run.controller.abort(); }

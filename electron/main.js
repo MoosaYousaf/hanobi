@@ -63,7 +63,7 @@ function state() {
 // Native turns hold provider request data the renderer never needs.
 function threadView(id) {
   const { messages, ...thread } = store.thread(id);
-  return { ...thread, messages: messages.map(({ native, ...m }) => m), live: runner.live()[id] || null };
+  return { ...thread, messages: messages.map(({ native, checkpoint, ...m }) => ({ ...m, ...(checkpoint ? { checkpoint: true } : {}) })), live: runner.live()[id] || null };
 }
 
 function mcpRecord(input, existing = {}) {
@@ -93,6 +93,7 @@ const handlers = {
   },
   'thread:rename': (id, title) => { store.update(id, { title: String(title).trim().slice(0, 100) || 'Conversation' }); changed(); },
   'thread:delete': id => { if (runner.runs.has(id)) throw new Error('Stop the reply first.'); store.removeThread(id); changed(); },
+  'thread:rewind': async (id, messageId, options) => { const result = await runner.rewind(id, messageId, options); changed(); send('thread-changed', { threadId: id }); if (options?.code) send('git-changed', store.thread(id).workspaceId); return result; },
   'thread:fork': (id, messageId) => { const branch = store.fork(id, messageId); changed(); return branch.id; },
   'thread:settings': (id, next) => { runner.setThreadSettings(id, next); changed(); send('thread-changed', { threadId: id }); },
   'run:send': (id, message) => runner.start(id, message),

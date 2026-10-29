@@ -85,8 +85,17 @@ app.whenReady().then(async () => {
     await shot(win, '5-theme');
     await clickText(win, '.palette', 'Hanobi');
     await until(win, `document.documentElement.dataset.palette === 'hanobi'`, 'palette resets');
+    await win.webContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
+    await click(win, '.settings-close');
+    await clickText(win, '.thread-row', 'Parse the release notes');
+    await until(win, `document.querySelectorAll('.msg').length === 2`, 'thread reopens');
+    await clickText(win, '.msg-action', 'Rewind');
+    await until(win, `!!document.querySelector('.rewind-menu') && document.querySelector('.rewind-note')?.textContent.includes('Git')`, 'rewind menu opens');
+    await shot(win, '6-rewind');
+    await clickText(win, '.rewind-menu button', 'Rewind conversation');
+    await until(win, `!document.querySelector('.msg') && document.querySelector('.composer textarea, textarea').value.includes('breaking change')`, 'rewind empties the thread and refills the composer');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes.\n');
+    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind.\n');
     app.exit(0);
   } catch (error) { process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }
 });

@@ -8,6 +8,7 @@ const { Secrets } = require('./secrets');
 const { Mcp } = require('./mcp');
 const { Runner } = require('./runner');
 const { presets, modes } = require('./providers/catalog');
+const projects = require('./projects');
 
 const PALETTES = ['hanobi', 'gemini', 'chatgpt', 'deepseek', 'custom'];
 const { cliPath } = require('./providers/cli');
@@ -61,6 +62,13 @@ function state() {
 }
 
 // Native turns hold provider request data the renderer never needs.
+const projectsRoot = () => path.join(app.getPath('userData'), 'Projects');
+function projectById(id) {
+  const project = store.workspace(id);
+  if (project.kind !== 'project') throw new Error('Project not found.');
+  return project;
+}
+
 function threadView(id) {
   const { messages, ...thread } = store.thread(id);
   return { ...thread, messages: messages.map(({ native, checkpoint, ...m }) => ({ ...m, ...(checkpoint ? { checkpoint: true } : {}) })), live: runner.live()[id] || null };
@@ -83,7 +91,37 @@ const handlers = {
     if (picked.canceled || !picked.filePaths[0]) return null;
     const workspace = store.addWorkspace(picked.filePaths[0]); changed(); return workspace;
   },
-  'workspace:remove': id => { if (store.data.threads.some(t => t.workspaceId === id && runner.runs.has(t.id))) throw new Error('Stop running conversations first.'); store.removeWorkspace(id); changed(); },
+  'workspace:remove': id => {
+    if (store.data.threads.some(t => t.workspaceId === id && runner.runs.has(t.id))) throw new Error('Stop running conversations first.');
+    const workspace = store.workspace(id);
+    if (workspace.kind === 'chats') throw new Error('The Chats list cannot be removed.');
+    store.removeWorkspace(id);
+    // A project folder belongs to Hanobi, so it goes with the project. A code folder stays on disk.
+    if (workspace.kind === 'project' && fs.existsSync(projectsRoot()) && workspace.path.startsWith(fs.realpathSync(projectsRoot()) + path.sep)) fs.rmSync(workspace.path, { recursive: true, force: true });
+    changed();
+  },
+  'project:create': name => {
+    name = String(name || '').trim().slice(0, 80) || 'New project';
+    const folder = path.join(projectsRoot(), crypto.randomUUID());
+    fs.mkdirSync(folder, { recursive: true });
+    const project = store.addWorkspace(folder, name, { kind: 'project', instructions: '' });
+    projects.writeContext(project);
+    changed(); return project;
+  },
+  'project:update': (id, patch) => {
+    const project = projectById(id);
+    if ('name' in patch) project.name = String(patch.name).trim().slice(0, 80) || project.name;
+    if ('instructions' in patch) project.instructions = String(patch.instructions).slice(0, 50000);
+    store.save(); projects.writeContext(project); changed();
+  },
+  'project:files': id => projects.files(projectById(id)),
+  'project:add-files': async id => {
+    const project = projectById(id);
+    const picked = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'] });
+    if (picked.canceled) return [];
+    return projects.addFiles(project, picked.filePaths);
+  },
+  'project:remove-file': (id, name) => projects.removeFile(projectById(id), name),
   'workspace:open': id => shell.openPath(store.workspace(id).path),
   'thread:new': (workspaceId, settings) => {
     const base = settings || store.data.preferences.lastModel || { connectionId: runner.connections().find(c => c.ready)?.id || 'claude-code', model: '', effort: '', mode: 'auto' };
@@ -166,11 +204,10 @@ app.whenReady().then(() => {
   runner = new Runner({ store, secrets, mcp, send });
   nativeTheme.themeSource = ['light', 'dark'].includes(store.data.preferences.theme) ? store.data.preferences.theme : 'system';
   // A general folder for chats that do not belong to a project.
-  if (!store.data.workspaces.length) {
-    const general = path.join(app.getPath('userData'), 'Chats');
-    fs.mkdirSync(general, { recursive: true });
-    store.addWorkspace(general, 'Chats');
-  }
+  const general = path.join(app.getPath('userData'), 'Chats');
+  fs.mkdirSync(general, { recursive: true });
+  const chats = store.addWorkspace(general, 'Chats', { kind: 'chats' });
+  if (chats.kind !== 'chats') { chats.kind = 'chats'; store.save(); }
   for (const [name, fn] of Object.entries(handlers)) ipcMain.handle(name, (_event, ...args) => fn(...args));
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: 'Hanobi', submenu: [{ role: 'about' }, { type: 'separator' }, { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => send('menu', 'settings') }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { type: 'separator' }, { role: 'quit' }] },

@@ -275,3 +275,25 @@ test('API models ask questions through the ask_user tool; answers must cover eve
   assert.equal(validAnswers([{ id: '0', multiSelect: false }, { id: '1' }], { 0: ['x'] }), null);
   assert.match((await call('c2', ASK_TOOL.qualified, { questions: [] })).output, /1 to 4 questions/);
 });
+
+test('projects: instructions files for CLIs, documents, and the API context', () => {
+  const projects = require('../electron/projects');
+  const project = { id: 'p', kind: 'project', name: 'Contracts', path: tmp('hanobi-project-'), instructions: 'Answer in plain language.' };
+  projects.writeContext(project);
+  for (const name of ['CLAUDE.md', 'AGENTS.md', 'GEMINI.md']) assert.match(fs.readFileSync(path.join(project.path, name), 'utf8'), /Answer in plain language\.[\s\S]*knowledge\//);
+  const src = tmp('hanobi-src-');
+  fs.writeFileSync(path.join(src, 'terms.md'), 'Net 30 payment.');
+  fs.writeFileSync(path.join(src, 'scan.pdf'), '%PDF-1.7');
+  assert.deepEqual(projects.addFiles(project, [path.join(src, 'terms.md'), path.join(src, 'scan.pdf'), path.join(src, 'terms.md')]), ['terms.md', 'scan.pdf', 'terms 2.md']);
+  assert.deepEqual(projects.files(project).map(f => f.name), ['scan.pdf', 'terms 2.md', 'terms.md']);
+  const context = projects.apiContext(project);
+  assert.match(context, /<document name="terms.md">\nNet 30 payment\.\n<\/document>/);
+  assert.match(context, /not included as text: scan\.pdf/);
+  assert.throws(() => projects.removeFile(project, '../CLAUDE.md'), /Invalid/);
+  projects.removeFile(project, 'terms 2.md');
+  assert.equal(projects.files(project).length, 2);
+  // CLI chats read and change nothing; old workspaces become code folders.
+  assert.deepEqual(command('claude', { mode: 'full', chat: true }).filter(a => a === '--tools' || a === 'Read,Glob,Grep' || a === 'bypassPermissions'), ['--tools', 'Read,Glob,Grep']);
+  assert.ok(command('codex', { mode: 'full', chat: true }).includes('read-only'));
+  assert.equal(migrate({ version: 2, workspaces: [{ id: 'w', name: 'x', path: '/x' }] }).workspaces[0].kind, 'code');
+});

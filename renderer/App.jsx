@@ -3,6 +3,8 @@ import { useStore } from './store.js';
 import { Sidebar } from './components/Sidebar.jsx';
 import { ThreadView, Home } from './components/ThreadView.jsx';
 import { SidePanel } from './components/SidePanel.jsx';
+import { ProjectView } from './components/ProjectView.jsx';
+import { TextDialog } from './components/TextDialog.jsx';
 
 // Settings is opened rarely, so it loads on first use.
 const Settings = lazy(() => import('./components/Settings.jsx'));
@@ -22,6 +24,7 @@ function applyPalette(palette, accent) {
 export function App() {
   const ready = useStore(s => !!s.app);
   const threadId = useStore(s => s.ui.threadId);
+  const projectId = useStore(s => s.ui.projectId);
   const sidebar = useStore(s => s.ui.sidebar);
   const panel = useStore(s => s.ui.panel);
   const settings = useStore(s => s.ui.settings);
@@ -33,9 +36,10 @@ export function App() {
   return (
     <div className={`app ${sidebar ? '' : 'no-sidebar'} ${panel ? 'with-panel' : ''}`}>
       {sidebar ? <Sidebar /> : null}
-      <main className="main">{threadId ? <ThreadView key={threadId} threadId={threadId} /> : <Home />}</main>
+      <main className="main">{threadId ? <ThreadView key={threadId} threadId={threadId} /> : projectId ? <ProjectView key={projectId} projectId={projectId} /> : <Home />}</main>
       {panel ? <SidePanel /> : null}
       {settings ? <Suspense fallback={null}><Settings /></Suspense> : null}
+      <TextDialog />
       {toast ? <div className="toast" role="status">{toast}</div> : null}
     </div>
   );

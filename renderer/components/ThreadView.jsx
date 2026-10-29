@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { PanelLeftOpen, GitCompare, Sparkles, Trash2, Pencil, FolderOpen } from 'lucide-react';
-import { useStore, setUi, loadThread, openThread, newThread, call, guard, toast } from '../store.js';
+import { useStore, setUi, loadThread, openThread, newThread, call, guard, toast, askText } from '../store.js';
 import { modelLabel } from '../labels.js';
 import { Message, LiveMessage } from './Message.jsx';
 import { Composer, setDraft } from './Composer.jsx';
@@ -12,7 +12,7 @@ function Header({ thread, workspace }) {
   const sidebar = useStore(s => s.ui.sidebar);
   const panel = useStore(s => s.ui.panel);
   const running = useStore(s => !!s.live[thread.id]);
-  const rename = guard(async () => { const title = prompt('Conversation name', thread.title); if (title !== null) await call('thread:rename', thread.id, title); });
+  const rename = guard(async () => { const title = await askText('Conversation name', thread.title); if (title !== null) await call('thread:rename', thread.id, title); });
   const remove = guard(async () => { if (confirm(`Delete “${thread.title}”?`)) { await call('thread:delete', thread.id); setUi({ threadId: null }); } });
   const toggle = name => setUi({ panel: panel === name ? null : name });
   return (

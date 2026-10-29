@@ -10,8 +10,9 @@ let state = {
   threads: {}, // id -> thread with messages
   live: {}, // threadId -> streaming parts
   approvals: [], // approval requests and model questions; questions carry `questions`
-  ui: { workspaceId: null, threadId: null, panel: null, settings: null, sidebar: true },
-  toast: null
+  ui: { view: null, workspaceId: null, threadId: null, projectId: null, panel: null, settings: null, sidebar: true },
+  toast: null,
+  textDialog: null // { title, value, resolve }
 };
 const listeners = new Set();
 const emit = () => listeners.forEach(l => l());
@@ -30,12 +31,18 @@ export function toast(message) {
 // Wraps an action so a failure shows a toast instead of an unhandled rejection.
 export const guard = fn => async (...args) => { try { return await fn(...args); } catch (error) { toast(error); } };
 
+// The sidebar shows Chat (general chats and projects) or Code (folders). A workspace fits the view of its kind.
+export const fitsView = (workspace, view) => !!workspace && (view === 'chat') === (workspace.kind !== 'code');
+
 export async function refresh() {
   const app = await call('state');
   const { ui } = state;
-  const workspaceId = app.workspaces.some(w => w.id === ui.workspaceId) ? ui.workspaceId : app.workspaces[0]?.id || null;
+  const view = ui.view || (app.workspaces.some(w => w.kind === 'code') ? 'code' : 'chat');
+  const current = app.workspaces.find(w => w.id === ui.workspaceId);
+  const workspaceId = fitsView(current, view) ? current.id : app.workspaces.find(w => fitsView(w, view))?.id || null;
   const threadId = app.threads.some(t => t.id === ui.threadId) ? ui.threadId : null;
-  set({ app, ui: { ...ui, workspaceId, threadId } });
+  const projectId = app.workspaces.some(w => w.id === ui.projectId && w.kind === 'project') ? ui.projectId : null;
+  set({ app, ui: { ...ui, view, workspaceId, threadId, projectId } });
   if (app.warning && !refresh.warned) { refresh.warned = true; toast(app.warning); }
 }
 export async function loadThread(id) {
@@ -45,14 +52,24 @@ export async function loadThread(id) {
 }
 export async function openThread(id) {
   const thread = state.app.threads.find(t => t.id === id);
-  setUi({ threadId: id, workspaceId: thread?.workspaceId ?? state.ui.workspaceId });
+  const workspace = state.app.workspaces.find(w => w.id === thread?.workspaceId);
+  setUi({ threadId: id, projectId: null, workspaceId: workspace?.id ?? state.ui.workspaceId, ...(workspace ? { view: workspace.kind === 'code' ? 'code' : 'chat' } : {}) });
   await loadThread(id);
 }
-export async function newThread(workspaceId = state.ui.workspaceId) {
-  if (!workspaceId) { setUi({ settings: 'models' }); return; }
+// Without a workspace id, the new conversation goes to the selected workspace if it fits the view, else the first that fits.
+export async function newThread(workspaceId) {
+  const { app, ui } = state;
+  const selected = app.workspaces.find(w => w.id === ui.workspaceId);
+  workspaceId ??= fitsView(selected, ui.view) ? selected.id : app.workspaces.find(w => fitsView(w, ui.view))?.id;
+  if (!workspaceId) {
+    if (ui.view !== 'code') { setUi({ settings: 'models' }); return; }
+    const chosen = await call('workspace:choose');
+    if (!chosen) return;
+    workspaceId = chosen.id;
+  }
   const thread = await call('thread:new', workspaceId);
   set(s => ({ threads: { ...s.threads, [thread.id]: thread } }));
-  setUi({ threadId: thread.id, workspaceId });
+  setUi({ threadId: thread.id, projectId: null, workspaceId });
   await refresh();
 }
 
@@ -89,4 +106,13 @@ export async function answerApproval(id, decision) {
 export async function answerQuestion(id, answers) {
   set(s => ({ approvals: s.approvals.filter(a => a.id !== id) }));
   await call('run:answer', id, answers);
+}
+
+// Electron has no window.prompt, so text input goes through this dialog. Resolves to the text, or null on cancel.
+export function askText(title, value = '') {
+  return new Promise(resolve => set({ textDialog: { title, value, resolve } }));
+}
+export function closeTextDialog(result) {
+  state.textDialog?.resolve(result);
+  set({ textDialog: null });
 }

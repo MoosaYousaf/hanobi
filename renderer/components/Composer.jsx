@@ -29,6 +29,9 @@ export function Composer({ thread, workspace, modelLabel }) {
   const isCli = preset?.kind === 'cli';
   const modes = app.modes[isCli ? 'cli' : 'api'].filter(m => !m.asks || preset?.asks);
   const mode = modes.find(m => m.id === thread.mode) || modes[0];
+  // CLI agents in Chat and projects only read, so their access mode does not apply.
+  const chatCli = isCli && workspace.kind && workspace.kind !== 'code';
+  const note = chatCli ? (workspace.kind === 'project' ? 'Chat. The agent can read this project’s documents and changes nothing.' : 'Chat. The agent changes nothing on this Mac.') : mode.detail;
 
   const update = value => { setText(value); drafts.set(thread.id, value); };
   useEffect(() => {
@@ -79,9 +82,11 @@ export function Composer({ thread, workspace, modelLabel }) {
               {preset.efforts.map(e => <option key={e} value={e}>{e ? `Effort: ${e}` : 'Effort: default'}</option>)}
             </select>
           ) : null}
-          <select className={`mini-select ${mode.danger ? 'danger' : ''}`} value={mode.id} disabled={running} onChange={e => onAccess(e.target.value)} title={mode.detail}>
-            {modes.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-          </select>
+          {!chatCli ? (
+            <select className={`mini-select ${mode.danger ? 'danger' : ''}`} value={mode.id} disabled={running} onChange={e => onAccess(e.target.value)} title={mode.detail}>
+              {modes.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+          ) : null}
           <span className="grow" />
           {running
             ? <button className="send stop" title="Stop" onClick={guard(() => call('run:stop', thread.id))}><Square size={12} fill="currentColor" /></button>
@@ -91,7 +96,7 @@ export function Composer({ thread, workspace, modelLabel }) {
       <div className="composer-note">
         <Folder size={12} /> <span title={workspace.path}>{workspace.name}</span>
         <span className="sep">·</span>
-        <span className={mode.danger ? 'danger-text' : ''}>{mode.detail}</span>
+        <span className={mode.danger && !chatCli ? 'danger-text' : ''}>{note}</span>
       </div>
     </div>
   );

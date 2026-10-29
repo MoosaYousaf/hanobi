@@ -101,8 +101,25 @@ app.whenReady().then(async () => {
     await shot(win, '6-rewind');
     await clickText(win, '.rewind-menu button', 'Rewind conversation');
     await until(win, `!document.querySelector('.msg') && document.querySelector('.composer textarea, textarea').value.includes('breaking change')`, 'rewind empties the thread and refills the composer');
+    await clickText(win, '.view-switch button', 'Chat');
+    await until(win, `[...document.querySelectorAll('.ws-name')].some(e => e.textContent === 'Chats') && document.querySelector('.new-chat').textContent.includes('New chat')`, 'chat view lists Chats');
+    await clickText(win, '.side-action', 'New Project');
+    await until(win, `!!document.querySelector('.text-dialog input')`, 'project name dialog opens');
+    await win.webContents.executeJavaScript(`(() => { const i = document.querySelector('.text-dialog input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'Launch plan'); i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await click(win, '.text-dialog .btn.primary');
+    await until(win, `document.querySelector('.project-head h1')?.textContent === 'Launch plan'`, 'project page opens');
+    await win.webContents.executeJavaScript(`(() => { const t = document.querySelector('.project .system-prompt'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, 'Write for customers.'); t.dispatchEvent(new Event('input', { bubbles: true })); t.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); t.blur(); })()`);
+    await shot(win, '7-project');
+    await clickText(win, '.project-head .btn', 'New chat');
+    await until(win, `document.querySelector('.composer-note')?.textContent.includes('project’s documents') && !!document.querySelector('.crumb-ws') && document.querySelector('.crumb-ws').textContent === 'Launch plan'`, 'project chat opens in chat mode');
+    const saved = JSON.parse(fs.readFileSync(path.join(process.env.HANOBI_USER_DATA, 'hanobi-data.json'), 'utf8'));
+    await sleep(600);
+    const project = JSON.parse(fs.readFileSync(path.join(process.env.HANOBI_USER_DATA, 'hanobi-data.json'), 'utf8')).workspaces.find(w => w.kind === 'project');
+    if (!project || project.instructions !== 'Write for customers.' || !fs.readFileSync(path.join(project.path, 'CLAUDE.md'), 'utf8').includes('Write for customers.')) throw new Error('Project instructions were not saved: ' + JSON.stringify(project || saved.workspaces));
+    await clickText(win, '.view-switch button', 'Code');
+    await until(win, `[...document.querySelectorAll('.ws-name')].some(e => e.textContent === 'hanobi') && ![...document.querySelectorAll('.ws-name')].some(e => e.textContent === 'Chats')`, 'code view lists folders only');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions.\n');
+    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects.\n');
     app.exit(0);
   } catch (error) { process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }
 });

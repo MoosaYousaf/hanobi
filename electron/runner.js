@@ -6,6 +6,7 @@ const cli = require('./providers/cli');
 const anthropic = require('./providers/anthropic');
 const git = require('./git');
 const suggest = require('./suggest');
+const projects = require('./projects');
 const openai = require('./providers/openai');
 
 const UPDATE_MS = 60;
@@ -118,7 +119,9 @@ class Runner {
 
   async execute({ threadId, thread, workspace, connection, preset, history, text, draft, controller, userId }) {
     // A file checkpoint before the model acts makes "Rewind code" possible. Folders outside Git have none.
-    const checkpoint = await git.snapshot(workspace.path).catch(() => null);
+    // Chats and projects are not code folders, so they get no checkpoints.
+    const chat = workspace.kind === 'chats' || workspace.kind === 'project';
+    const checkpoint = chat ? null : await git.snapshot(workspace.path).catch(() => null);
     if (checkpoint) this.store.patchMessage(threadId, userId, { checkpoint });
     let sent = -1;
     const ticker = setInterval(() => { if (draft.version !== sent) { sent = draft.version; this.send('run-update', { threadId, parts: draft.parts }); } }, UPDATE_MS);
@@ -136,13 +139,14 @@ class Runner {
       const common = { thread, history: this.store.thread(threadId).messages, draft, signal: controller.signal };
       let result;
       if (preset.kind === 'cli') {
-        result = await cli.run({ ...common, preset, history, prompt: text, cwd: workspace.path, mcpServers: this.mcp.enabledConfigs(),
+        result = await cli.run({ ...common, preset, history, prompt: text, cwd: workspace.path, chat, mcpServers: this.mcp.enabledConfigs(),
           onSession: id => { if (id !== thread.sessionId) this.store.update(threadId, { sessionId: id, replay: false }); },
           approve: request => this.ask(threadId, { server: preset.name, ...request }),
           question: request => this.question(threadId, { server: preset.name, ...request }) });
       } else {
         const tools = [...await this.mcp.tools(), ASK_TOOL];
-        const api = { ...common, apiKey: this.secrets.get(`key:${connection.id}`), system: this.store.data.preferences.systemPrompt || undefined, tools, callTool: this.toolCaller(threadId, tools, draft) };
+        const system = [this.store.data.preferences.systemPrompt, workspace.kind === 'project' ? projects.apiContext(workspace) : ''].filter(Boolean).join('\n\n');
+        const api = { ...common, apiKey: this.secrets.get(`key:${connection.id}`), system: system || undefined, tools, callTool: this.toolCaller(threadId, tools, draft) };
         result = preset.kind === 'anthropic' ? await anthropic.run(api) : await openai.run({ ...api, baseURL: connection.baseURL || preset.baseURL });
       }
       const stopped = controller.signal.aborted;

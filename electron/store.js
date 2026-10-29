@@ -7,7 +7,8 @@ const empty = () => ({ version: VERSION, workspaces: [], threads: [], connection
 
 // Converts the Orbit Code v1 file: provider-keyed threads become connection-keyed threads.
 function migrate(loaded) {
-  if (loaded.version === VERSION) return { ...empty(), ...loaded, preferences: { ...empty().preferences, ...loaded.preferences } };
+  // Workspaces from before Chat and Projects are code folders; main marks the general Chats folder at startup.
+  if (loaded.version === VERSION) return { ...empty(), ...loaded, workspaces: (loaded.workspaces || []).map(w => ({ kind: 'code', ...w })), preferences: { ...empty().preferences, ...loaded.preferences } };
   if (loaded.version !== 1) throw new Error(`Unknown data version ${loaded.version}.`);
   const data = empty();
   data.workspaces = loaded.workspaces || [];
@@ -66,12 +67,13 @@ class Store {
     if (!value) throw new Error('Conversation not found.');
     return value;
   }
-  addWorkspace(folder, name = path.basename(folder)) {
+  // kind: 'code' (a folder the user chose), 'chats' (the general chat folder), or 'project' (an app-owned project folder).
+  addWorkspace(folder, name = path.basename(folder), extra = {}) {
     const real = fs.realpathSync(folder);
     if (!fs.statSync(real).isDirectory()) throw new Error('Choose a folder.');
     const existing = this.data.workspaces.find(w => w.path === real);
     if (existing) return existing;
-    const workspace = { id: crypto.randomUUID(), name, path: real };
+    const workspace = { id: crypto.randomUUID(), name, path: real, kind: 'code', ...extra };
     this.data.workspaces.unshift(workspace);
     this.save();
     return workspace;

@@ -14,15 +14,21 @@ Hanobi runs on macOS 12 Monterey and later, including Intel Macs. It pins Electr
 
 ## Features
 
-- Conversations grouped by project folder, plus a general **Chats** folder.
+- **Chat** and **Code** views. Code lists the folders you add with **New Workspace**. Chat lists general chats and **Projects**.
+- Projects: instructions and documents that every chat in the project gets. API and local models receive the instructions and the text of text documents in the system prompt. CLI agents run in the project folder with read-only tools, read the instructions from `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md`, and open any document themselves.
+- Chats use the same model sources as code. Subscription chat apps (claude.ai, ChatGPT, Gemini) have no public API for other apps, so chats with a subscription go through its CLI with read-only tools.
 - A model picker for every connected model. You can switch models in the middle of a conversation. A model from the same provider continues with the full native history. A model from a different provider gets a text transcript.
 - Streaming Markdown replies, thought summaries, and expandable tool calls.
 - MCP connectors over stdio or Streamable HTTP, including OAuth sign-in (for example, Notion). API and local models ask before each tool call, unless you choose **Allow tools**. Claude Code receives the connectors that do not use OAuth.
 - Image attachments for API and local models.
 - Branching: start a new branch from any of your messages, then edit and send it again.
+- Rewind: return to before any of your messages. Rewind the conversation, the workspace files, or both. Before each turn in a Git workspace, Hanobi saves a checkpoint of every file that `.gitignore` does not exclude. It uses a private index, so your index, branches, and stash do not change. Git can delete checkpoints older than two weeks.
+- Suggested replies under the latest reply. Claude Code makes them. API and local models make them when you turn on **Settings → General → Suggested replies** (one extra request per reply).
+- Questions: the model can ask you multiple-choice questions during a turn. Claude Code (AskUserQuestion), Codex in **Ask first**, and API and local models (a `hanobi__ask_user` tool) support them.
 - Git panel: status, diffs, stage, unstage, commit, and a link to the GitHub remote.
 - A list of the skills that your CLI agents load.
-- Light and dark themes that follow macOS, multiple windows, and keyboard shortcuts (`⌘N`, `⌘,`, `⌘\`).
+- Light and dark modes that follow macOS. Theme palettes: Hanobi, Gemini style, ChatGPT style, DeepSeek style, and a custom accent color.
+- Multiple windows and keyboard shortcuts (`⌘N`, `⌘,`, `⌘\`).
 
 ## Run
 
@@ -78,7 +84,6 @@ The packaged app is unsigned. macOS may ask you to allow it in **System Settings
 
 1. Live verification of each subscription CLI and API provider on real accounts.
 2. Structured approval prompts for GitHub Copilot (ACP). Claude Code and Codex have them in **Ask first**.
-3. File checkpoints and rewind, aware of uncommitted Git changes.
-4. GitHub pull requests, branches, and review status.
-5. Project knowledge: attach files and folders to API conversations.
-6. Signing, notarization, auto-update, a license, and contributor guidelines before a public release.
+3. GitHub pull requests, branches, and review status.
+4. Text extraction from PDF and Office documents for API models in projects.
+5. Signing, notarization, auto-update, a license, and contributor guidelines before a public release.

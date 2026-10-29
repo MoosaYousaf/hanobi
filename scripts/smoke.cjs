@@ -20,6 +20,18 @@ fs.writeFileSync(path.join(process.env.HANOBI_USER_DATA, 'hanobi-data.json'), JS
       text('There are **two** breaking changes in `2.0.0`:\n\n1. The legacy API is removed.\n2. Config moved to `hanobi.json`.\n\n```js\nconst config = require(\'./hanobi.json\');\n```\n\n| Version | Change |\n| --- | --- |\n| 2.0.0 | Legacy API removed |')] }
   ] }]
 }));
+// The workspace is a Git repository with a GitHub origin. A fake gh answers with one pull request.
+const { execFileSync } = require('node:child_process');
+const gitIn = (...args) => execFileSync('git', args, { cwd: folder });
+gitIn('init', '-q', '-b', 'feature/parser'); gitIn('config', 'user.email', 'smoke@example.com'); gitIn('config', 'user.name', 'Smoke');
+gitIn('remote', 'add', 'origin', 'https://github.com/example/hanobi.git');
+fs.writeFileSync(path.join(folder, 'CHANGELOG.md'), '## 2.0.0\n'); gitIn('add', '.'); gitIn('commit', '-qm', 'init');
+fs.writeFileSync(path.join(folder, 'notes.md'), 'draft\n');
+const ghBin = fs.mkdtempSync(path.join(os.tmpdir(), 'hanobi-gh-'));
+fs.copyFileSync(path.join(__dirname, '../test/fixtures/fake-gh.cjs'), path.join(ghBin, 'gh')); fs.chmodSync(path.join(ghBin, 'gh'), 0o755);
+process.env.PATH = `${ghBin}${path.delimiter}${process.env.PATH}`;
+process.env.FAKE_GH_LOG = path.join(ghBin, 'log'); process.env.FAKE_GH_STATE = path.join(ghBin, 'state.json');
+fs.writeFileSync(process.env.FAKE_GH_STATE, JSON.stringify({ pr: { number: 12, title: 'Parse breaking changes from the changelog', url: 'https://github.com/example/hanobi/pull/12', state: 'OPEN', isDraft: false, reviewDecision: 'CHANGES_REQUESTED', headRefName: 'feature/parser', baseRefName: 'main', author: { login: 'me' }, updatedAt: '2026-10-29T00:00:00Z' } }));
 const { app, BrowserWindow, nativeTheme } = require('electron');
 require('../electron/main.js');
 
@@ -67,6 +79,15 @@ app.whenReady().then(async () => {
     await shot(win, '1b-thread');
     win.webContents.send('run-state', { threadId: 't1', running: false });
     await until(win, `!document.querySelector('.approval')`, 'live reply clears');
+    await click(win, '.topbar [title="Changes"]');
+    await until(win, `document.querySelector('.branch-btn')?.textContent === 'feature/parser' && document.querySelector('.pr-card .pr-title')?.textContent.includes('#12')`, 'Changes panel shows the branch and its pull request');
+    await until(win, `document.querySelector('.pr-meta')?.textContent.includes('Changes requested') && document.querySelector('.pr-checks')?.dataset.tip === 'Checks: 2 passed, 1 failed, 1 pending'`, 'pull request review and checks');
+    await until(win, `document.querySelector('.pr-row')?.textContent.includes('Other work') && !!document.querySelector('.git-path[title="notes.md"]')`, 'open pull requests and changed files');
+    await shot(win, '1c-changes');
+    await click(win, '.branch-btn');
+    await until(win, `[...document.querySelectorAll('.menu-item')].some(b => b.textContent === 'New branch…') && [...document.querySelectorAll('.menu-item')].some(b => b.textContent === 'feature/parser' && b.disabled)`, 'branch menu lists branches');
+    await win.webContents.executeJavaScript(`document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+    await click(win, '.topbar [title="Changes"]');
     await click(win, '.new-chat');
     await until(win, `!!document.querySelector('.composer textarea')`, 'composer renders');
     await click(win, '.chip');
@@ -162,7 +183,7 @@ app.whenReady().then(async () => {
     })()`);
     await until(win, `(${JSON.stringify(listed)}).at(-1) === [...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row .thread-title')][0].textContent`, 'dragging a conversation reorders the list');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder.\n');
+    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests.\n');
     app.exit(0);
   } catch (error) { process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }
 });

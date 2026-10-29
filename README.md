@@ -25,7 +25,8 @@ Hanobi runs on macOS 12 Monterey and later, including Intel Macs. It pins Electr
 - Rewind: return to before any of your messages. Rewind the conversation, the workspace files, or both. Before each turn in a Git workspace, Hanobi saves a checkpoint of every file that `.gitignore` does not exclude. It uses a private index, so your index, branches, and stash do not change. Git can delete checkpoints older than two weeks.
 - Suggested replies under the latest reply. Claude Code makes them. API and local models make them when you turn on **Settings → General → Suggested replies** (one extra request per reply).
 - Questions: the model can ask you multiple-choice questions during a turn. Claude Code (AskUserQuestion), Codex in **Ask first**, and API and local models (a `hanobi__ask_user` tool) support them.
-- Git panel: status, diffs, stage, unstage, commit, and a link to the GitHub remote.
+- Git panel: status, diffs, stage, unstage, and commit. Switch or create branches, see commits to push and pull, push, publish a new branch, and pull (fast-forward only).
+- GitHub pull requests through the GitHub CLI (`gh`): the pull request of the current branch with its state, review decision, and checks; create one (title, Markdown description, base branch, draft); list open pull requests, open them on GitHub, or check them out. Run `gh auth login` once. Hanobi stores no GitHub token.
 - A list of the skills that your CLI agents load.
 - Light and dark modes that follow macOS. Theme palettes: Hanobi, Gemini style, ChatGPT style, DeepSeek style, and a custom accent color.
 - A **…** menu on each conversation in the sidebar: Rename, Open in split pane, Pin to top, Move to project or workspace, and Delete.
@@ -88,5 +89,4 @@ The packaged app is unsigned. macOS may ask you to allow it in **System Settings
 ## Roadmap
 
 1. Live verification of each subscription CLI and API provider on real accounts.
-2. GitHub pull requests, branches, and review status.
-3. Signing, notarization, auto-update, a license, and contributor guidelines before a public release.
+2. Signing, notarization, auto-update, a license, and contributor guidelines before a public release.

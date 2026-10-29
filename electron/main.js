@@ -13,6 +13,7 @@ const projects = require('./projects');
 const PALETTES = ['hanobi', 'gemini', 'chatgpt', 'deepseek', 'custom'];
 const { cliPath } = require('./providers/cli');
 const git = require('./git');
+const github = require('./github');
 const { skills } = require('./skills');
 
 app.setName('Hanobi');
@@ -207,6 +208,16 @@ const handlers = {
   'git:diff': (id, file, options) => git.diff(store.workspace(id).path, file, options || {}),
   'git:stage': async (id, file, unstage) => { await git.stage(store.workspace(id).path, file, unstage); send('git-changed', id); },
   'git:commit': async (id, message) => { const out = await git.commit(store.workspace(id).path, message); send('git-changed', id); return out; },
+  'git:branches': id => git.branches(store.workspace(id).path),
+  'git:checkout': async (id, branch, create) => { await git.checkout(store.workspace(id).path, branch, !!create); send('git-changed', id); },
+  'git:push': async id => { await git.push(store.workspace(id).path); send('git-changed', id); },
+  'git:pull': async id => { await git.pull(store.workspace(id).path); send('git-changed', id); },
+  'github:current': id => github.current(store.workspace(id).path),
+  'github:list': id => github.list(store.workspace(id).path),
+  'github:default-branch': id => github.defaultBranch(store.workspace(id).path),
+  'github:create': async (id, options) => { const url = await github.create(store.workspace(id).path, options || {}); send('git-changed', id); return url; },
+  'github:checkout': async (id, number) => { await github.checkout(store.workspace(id).path, number); send('git-changed', id); },
+  'github:open': url => { if (!/^https:\/\/github\.com\//.test(url)) throw new Error('Not a GitHub link.'); return shell.openExternal(url); },
   'git:remote': async id => { const { remote } = await git.status(store.workspace(id).path); if (!remote) throw new Error('No GitHub origin remote found.'); return shell.openExternal(remote); },
   'open:external': url => { if (/^https:\/\//.test(url)) return shell.openExternal(url); },
   'window:new': () => { createWindow(); },

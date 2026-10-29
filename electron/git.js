@@ -18,11 +18,13 @@ const root = async cwd => (await git(cwd, ['rev-parse', '--show-toplevel'])).tri
 // Porcelain v2 with -z: one call returns the branch and every entry, with unquoted root-relative paths.
 function parseStatus(output) {
   const tokens = output.split('\0');
-  let branch = 'detached HEAD';
+  let branch = 'detached HEAD', upstream = null, ahead = 0, behind = 0;
   const files = [];
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
     if (token.startsWith('# branch.head ')) { const name = token.slice(14); if (name !== '(detached)') branch = name; }
+    else if (token.startsWith('# branch.upstream ')) upstream = token.slice(18);
+    else if (token.startsWith('# branch.ab ')) [ahead, behind] = token.slice(12).split(' ').map(n => Math.abs(+n));
     else if (token.startsWith('? ')) files.push({ path: token.slice(2), staged: false, changed: true, untracked: true });
     else if (token[0] === '1' || token[0] === '2') {
       const fields = token.split(' ');
@@ -32,7 +34,7 @@ function parseStatus(output) {
       files.push({ path: file, staged: xy[0] !== '.', changed: xy[1] !== '.', untracked: false });
     } else if (token[0] === 'u') files.push({ path: token.split(' ').slice(10).join(' '), staged: false, changed: true, untracked: false, conflict: true });
   }
-  return { branch, files };
+  return { branch, detached: branch === 'detached HEAD', upstream, ahead, behind, files };
 }
 
 function githubUrl(url) {
@@ -78,6 +80,31 @@ async function commit(cwd, message) {
   return (await git(await root(cwd), ['commit', '-m', message])).trim();
 }
 
+async function branches(cwd) {
+  const out = await git(await root(cwd), ['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', 'refs/heads']);
+  return out.split('\n').filter(Boolean);
+}
+
+// Switching keeps uncommitted changes; Git refuses when they would be lost.
+async function checkout(cwd, branch, create = false) {
+  branch = String(branch || '').trim();
+  const top = await root(cwd);
+  await git(top, ['check-ref-format', '--branch', branch]).catch(() => { throw new Error(`"${branch}" is not a valid branch name.`); });
+  return git(top, ['switch', ...(create ? ['-c'] : []), branch]);
+}
+
+// Network commands never ask for a password in a terminal; they fail with Git's message instead.
+const NETWORK = { env: { GIT_TERMINAL_PROMPT: '0' }, timeout: 120000 };
+
+async function push(cwd) {
+  const top = await root(cwd);
+  const { upstream, detached } = parseStatus(await git(top, ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=no']));
+  if (detached) throw new Error('Check out a branch before you push.');
+  return git(top, upstream ? ['push'] : ['push', '--set-upstream', 'origin', 'HEAD'], NETWORK);
+}
+
+const pull = async cwd => git(await root(cwd), ['pull', '--ff-only'], NETWORK);
+
 // Checkpoints use a private index file, so the user's index, branches, and stash never change.
 // A checkpoint is a tree of every tracked and untracked file that .gitignore does not exclude.
 // Git keeps unreferenced trees for at least two weeks (gc.pruneExpire), so older checkpoints can be gone.
@@ -118,4 +145,4 @@ async function restore(cwd, checkpoint) {
   return { restored, removed };
 }
 
-module.exports = { status, diff, stage, commit, snapshot, restore, parseStatus, githubUrl };
+module.exports = { git, root, status, diff, stage, commit, branches, checkout, push, pull, snapshot, restore, parseStatus, githubUrl };

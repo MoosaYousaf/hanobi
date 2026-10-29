@@ -16,6 +16,12 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     else setInterval(() => {}, 1000);
     out({ type: 'assistant', message: { content: [{ type: 'text', text: 'Done.' }] } });
     out({ type: 'result', result: 'Done.', session_id: 'fake-session' });
+  } else if (event.type === 'user' && event.message.content === 'suggest') {
+    // Like Claude Code: the suggested next prompt comes after the result, and only with the flag and the env setting.
+    out({ type: 'assistant', message: { content: [{ type: 'text', text: 'Done.' }] } });
+    out({ type: 'result', result: 'Done.', session_id: 'fake-session' });
+    const on = process.argv.includes('--prompt-suggestions') && process.env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION === '1';
+    setTimeout(() => { if (on) out({ type: 'prompt_suggestion', suggestion: 'Run the tests', session_id: 'fake-session' }); process.exit(0); }, 3500);
   } else if (event.type === 'user') {
     out({ type: 'system', subtype: 'init', session_id: 'fake-session' });
     out({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: event.message.content } }] } });

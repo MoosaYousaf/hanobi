@@ -118,6 +118,17 @@ function VoiceStatus({ threadId }) {
   return <div className="voice-status" role="status">{text}</div>;
 }
 
+// The rest of the first suggestion, then the newest earlier user message, that starts with the typed text.
+const MIN_TYPED = 2;
+const userText = m => (m.role === 'user' ? (m.parts || []).filter(p => p.type === 'text').map(p => p.text).join('\n') : '');
+export function completion(text, suggestions, messages) {
+  if (text.trim().length < MIN_TYPED || text.includes('\n') || /^[/@]/.test(text)) return '';
+  const typed = text.toLowerCase();
+  const earlier = messages.map(userText).filter(t => t && !t.includes('\n')).reverse();
+  const match = [...suggestions, ...earlier].find(c => c.length > text.length && c.toLowerCase().startsWith(typed));
+  return match ? match.slice(text.length) : '';
+}
+
 // Text drafts survive switching between conversations.
 const drafts = new Map();
 // A mounted composer listens, so a draft set from outside (rewind, a suggestion) shows at once.
@@ -154,7 +165,11 @@ export function Composer({ thread, workspace, modelLabel }) {
   };
   // The ghost text: the first suggested reply shows in the empty box, and Tab takes it.
   const last = thread.messages.at(-1);
-  const ghost = !text && !running && last?.role === 'assistant' ? last.suggestions?.[0] || '' : '';
+  const suggestions = !running && last?.role === 'assistant' ? last.suggestions || [] : [];
+  const ghost = !text ? suggestions[0] || '' : '';
+  // While the user types, the rest of a matching suggestion or earlier message shows after the caret. Tab or → takes it.
+  const [atEnd, setAtEnd] = useState(true);
+  const rest = !menu && atEnd ? completion(text, suggestions, thread.messages) : '';
   // The box fits its text on every change: typing, a send that clears it, voice input, or a restored draft.
   useLayoutEffect(() => {
     const el = input.current;
@@ -222,6 +237,7 @@ export function Composer({ thread, workspace, modelLabel }) {
     if (menu && (e.key === 'Enter' || e.key === 'Tab') && items[index] && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); choose(items[index]); return; }
     if (menu && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dismissed.current = `${menu.kind}:${menu.start}`; setMenu(null); return; }
     if (e.key === 'Tab' && !e.shiftKey && ghost) { e.preventDefault(); update(ghost); return; }
+    if (((e.key === 'Tab' && !e.shiftKey) || (e.key === 'ArrowRight' && !e.metaKey && !e.altKey)) && rest) { e.preventDefault(); update(text + rest); return; }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
   };
   const send = guard(async () => {
@@ -240,6 +256,11 @@ export function Composer({ thread, workspace, modelLabel }) {
   return (
     <div className="composer-wrap">
       <CommandMenu open={menu} items={items} index={index} onPick={choose} onHover={setIndex} />
+      {suggestions.length && !text && !menu ? (
+        <div className="suggestions" aria-label="Suggested replies">
+          {suggestions.map(s => <button key={s} className="suggestion" onClick={() => { update(s); input.current?.focus(); }}>{s}</button>)}
+        </div>
+      ) : null}
       <div className="composer" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); attach(e.dataTransfer.files); }}>
         {files.length ? (
           <div className="attachments">
@@ -251,17 +272,20 @@ export function Composer({ thread, workspace, modelLabel }) {
             ))}
           </div>
         ) : null}
-        <textarea
-          ref={input} autoFocus rows={1} value={text} className={ghost ? 'ghost' : ''}
-          placeholder={ghost || `Message ${modelLabel.split(' · ')[0]}… (/ for commands, @ for files)`}
-          aria-autocomplete="list" aria-expanded={!!menu}
-          onChange={e => { update(e.target.value); follow(e.target.value, e.target.selectionStart); }}
-          onSelect={e => { if (menu || e.target.value.includes('@') || e.target.value.startsWith('/')) follow(e.target.value, e.target.selectionStart); }}
-          onBlur={() => setMenu(null)}
-          onPaste={e => { const files = [...e.clipboardData.files]; if (files.length) { e.preventDefault(); attach(files); } }}
-          onKeyDown={onKey}
-        />
-        {ghost ? <kbd className="ghost-key" title="Press Tab to use the suggestion">Tab</kbd> : null}
+        <div className="input-box">
+          {rest ? <div className="ghost-mirror" aria-hidden="true"><span>{text}</span><span className="ghost-rest">{rest}</span></div> : null}
+          <textarea
+            ref={input} autoFocus rows={1} value={text} className={ghost ? 'ghost' : ''}
+            placeholder={ghost || `Message ${modelLabel.split(' · ')[0]}… (/ for commands, @ for files)`}
+            aria-autocomplete="list" aria-expanded={!!menu}
+            onChange={e => { update(e.target.value); follow(e.target.value, e.target.selectionStart); }}
+            onSelect={e => { setAtEnd(e.target.selectionStart === e.target.value.length); if (menu || e.target.value.includes('@') || e.target.value.startsWith('/')) follow(e.target.value, e.target.selectionStart); }}
+            onBlur={() => setMenu(null)}
+            onPaste={e => { const files = [...e.clipboardData.files]; if (files.length) { e.preventDefault(); attach(files); } }}
+            onKeyDown={onKey}
+          />
+        </div>
+        {ghost || rest ? <kbd className="ghost-key" title="Press Tab to use the suggestion">Tab</kbd> : null}
         {running
           ? <button className="send stop" title="Stop" onClick={guard(() => call('run:stop', thread.id))}><Square size={11} fill="currentColor" /></button>
           : <button className="send" title="Send (Enter)" disabled={!text.trim() && !files.length} onClick={send}><ArrowUp size={15} strokeWidth={2.4} /></button>}

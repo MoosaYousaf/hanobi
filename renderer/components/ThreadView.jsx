@@ -40,17 +40,6 @@ function Header({ thread, workspace, panes, index }) {
   );
 }
 
-// Replies the user could send next, under the latest reply. A click puts the text in the composer to edit or send.
-function Suggestions({ thread }) {
-  const last = thread.messages.at(-1);
-  if (last?.role !== 'assistant' || !last.suggestions?.length) return null;
-  return (
-    <div className="suggestions" aria-label="Suggested replies">
-      {last.suggestions.map(text => <button key={text} className="suggestion" onClick={() => setDraft(thread.id, text)}>{text}</button>)}
-    </div>
-  );
-}
-
 export function ThreadView({ threadId, panes = 1, index = 0 }) {
   const focus = useStore(s => s.ui.focus);
   const app = useStore(s => s.app);
@@ -103,7 +92,7 @@ export function ThreadView({ threadId, panes = 1, index = 0 }) {
             </div>
           ) : null}
           {messages.map(m => <Message key={m.id} message={m} modelLabel={m.role === 'assistant' ? modelLabel(app, m.connectionId || thread.connectionId, m.model ?? thread.model) : ''} onBranch={branch} onRewind={rewind} onEdit={edit} busy={running} />)}
-          {running ? <LiveMessage threadId={threadId} modelLabel={currentLabel} /> : <Suggestions thread={thread} />}
+          {running ? <LiveMessage threadId={threadId} modelLabel={currentLabel} /> : null}
         </div>
       </div>
       <Composer key={thread.id} thread={thread} workspace={workspace} modelLabel={currentLabel} />

@@ -143,6 +143,15 @@ test('Claude Code ask mode: the prompt is a stdin message, and approval prompts 
       assert.equal(draft.parts.at(-1).text, 'Done.');
       assert.ok(Date.now() - started < 5000, `${prompt} turn ended in ${Date.now() - started} ms`);
     }
+    // A suggestion that comes after the turn ended still reaches the caller.
+    draft = new Draft();
+    let late;
+    const suggested = new Promise(resolve => { late = resolve; });
+    const started = Date.now();
+    await cli.run({ ...base, thread: { mode: 'auto', model: '', effort: '' }, prompt: 'suggest', draft, question() {}, onSuggestion: late });
+    assert.ok(Date.now() - started < 3500, 'the turn ends before the suggestion');
+    assert.deepEqual(draft.suggestions, []);
+    assert.equal(await suggested, 'Run the tests');
   } finally { process.env.HOME = savedHome; cli.cliPath('claude', true); }
 });
 

@@ -105,6 +105,7 @@ app.whenReady().then(async () => {
     await until(win, `[...document.querySelectorAll('.option-pop .option-item')].some(b => b.textContent === 'High' && b.classList.contains('selected'))`, 'effort picker marks the current effort');
     await win.webContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
     await win.webContents.executeJavaScript(`document.querySelector('.usage-card').style.display = ''`);
+    await until(win, `!!document.querySelector('.composer-wrap > .suggestions .suggestion')`, 'suggestions show as chips above the message box');
     await clickText(win, '.suggestion', 'Show the migration steps');
     await until(win, `document.querySelector('.composer textarea, textarea').value === 'Show the migration steps'`, 'a suggestion fills the composer');
     await win.webContents.executeJavaScript(`(() => { const t = document.querySelector('.composer textarea, textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, ''); t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
@@ -118,6 +119,12 @@ app.whenReady().then(async () => {
     await until(win, `document.querySelector('.composer textarea').placeholder === 'Show the migration steps' && !!document.querySelector('.ghost-key')`, 'the first suggestion shows as ghost text');
     await key('Tab');
     await until(win, `document.querySelector('.composer textarea').value === 'Show the migration steps' && !document.querySelector('.ghost-key')`, 'Tab takes the ghost text');
+    // Inline completion: typed text that starts a suggestion shows the rest in gray, and → takes it.
+    await setComposer('show the');
+    await until(win, `document.querySelector('.ghost-rest')?.textContent === ' migration steps' && !document.querySelector('.composer-wrap > .suggestions')`, 'typing shows the rest of a matching suggestion');
+    await shot(win, '1a-complete');
+    await key('ArrowRight');
+    await until(win, `document.querySelector('.composer textarea').value === 'show the migration steps' && !document.querySelector('.ghost-rest')`, '→ takes the inline completion');
     await setComposer('');
     // The / menu lists Hanobi's commands; Enter on /model opens the model picker.
     await setComposer('/cl');
@@ -320,7 +327,7 @@ app.whenReady().then(async () => {
     })()`);
     await until(win, `(${JSON.stringify(listed)}).at(-1) === [...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row .thread-title')][0].textContent`, 'dragging a conversation reorders the list');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, ghost-text suggestion, / commands, @ file mentions, saved messages, live reply with approval, elapsed time and background work, themed access and effort pickers, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, Mermaid diagrams, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
+    process.stdout.write('Smoke passed: home, ghost-text suggestion, inline completion, suggestion chips, / commands, @ file mentions, saved messages, live reply with approval, elapsed time and background work, themed access and effort pickers, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, Mermaid diagrams, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
     app.exit(0);
   } catch (error) {
     if (errors.length) console.error('Console errors:\n' + errors.join('\n')); process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }

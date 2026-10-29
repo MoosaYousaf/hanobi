@@ -289,7 +289,11 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 .composer { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 14px; box-shadow: var(--shadow); padding: 9px 9px 9px 14px; transition: border-color .15s; }
 .composer .attachments { flex-basis: 100%; }
 .composer:focus-within { border-color: var(--text-3); }
-.composer textarea { flex: 1; min-width: 0; width: auto; border: 0; outline: 0; background: transparent; resize: none; font-size: 14.5px; line-height: 1.5; min-height: 24px; max-height: 260px; padding: 3px 0; display: block; }
+.composer .input-box { flex: 1; min-width: 0; position: relative; }
+.composer textarea { position: relative; width: 100%; border: 0; outline: 0; background: transparent; resize: none; font-size: 14.5px; line-height: 1.5; min-height: 24px; max-height: 260px; padding: 3px 0; display: block; }
+/* Inline completion: a copy of the text behind the transparent box, with the rest of the suggestion after it. */
+.composer .ghost-mirror { position: absolute; inset: 0; overflow: hidden; pointer-events: none; font-size: 14.5px; line-height: 1.5; padding: 3px 0; white-space: pre-wrap; overflow-wrap: break-word; color: transparent; }
+.composer .ghost-rest { color: var(--text-3); }
 .composer textarea::placeholder { color: var(--text-3); }
 .composer-row { display: flex; align-items: center; gap: 4px; margin: 6px 2px 0; }
 .composer-row .picker-pop { left: auto; right: 0; }
@@ -457,7 +461,7 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 .palette-custom { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--text-2); }
 .palette-custom input { width: 34px; height: 24px; border: 0; padding: 0; background: none; }
 
-.suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin: -12px 0 24px; }
+.suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 2px 8px; }
 .suggestion { padding: 6px 11px; border-radius: 16px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-2); font-size: 12.5px; text-align: left; }
 .suggestion:hover { color: var(--text); border-color: var(--text-3); }
 
@@ -594,7 +598,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .app.focus .composer-wrap { max-width: none; padding: 0 28px 10px; }
 .app.focus .composer { border-radius: 6px; border: 1px solid var(--border-strong); box-shadow: none; background: transparent; padding: 6px 6px 6px 26px; position: relative; }
 .app.focus .composer::before { content: '>'; position: absolute; left: 11px; top: 11px; font: 13px/1.55 var(--mono); color: var(--text-3); }
-.app.focus .composer textarea { font: 13px/1.55 var(--mono); }
+.app.focus .composer textarea, .app.focus .composer .ghost-mirror { font: 13px/1.55 var(--mono); }
 .app.focus .composer-row { font-family: var(--mono); }
 
 /* Desktop settings */

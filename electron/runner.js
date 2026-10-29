@@ -164,9 +164,11 @@ class Runner {
       const common = { thread, history: messages, draft, signal: controller.signal };
       // CLI agents get this message's attachment text and paths in the prompt; API models get every attachment through the transcript.
       const attachments = this.files ? await this.files.promptTexts(preset.kind === 'cli' ? [{ parts: attached }] : messages) : new Map();
-      let result;
+      let result, saved;
+      // Claude Code's suggestion can arrive after the reply is saved; it goes first in the list.
+      const onSuggestion = suggestion => { if (saved) this.addSuggestions(threadId, saved.id, [suggestion], true); else draft.suggestions = [...new Set([...draft.suggestions, suggestion])]; };
       if (preset.kind === 'cli') {
-        result = await cli.run({ ...common, preset, history, prompt: [attachmentBlock(attached, attachments, { paths: true }), text].filter(Boolean).join('\n\n'), cwd: workspace.path, chat, mcpServers: this.mcp.enabledConfigs(),
+        result = await cli.run({ ...common, preset, history, prompt: [attachmentBlock(attached, attachments, { paths: true }), text].filter(Boolean).join('\n\n'), cwd: workspace.path, chat, mcpServers: this.mcp.enabledConfigs(), onSuggestion,
           onSession: id => { if (id !== thread.sessionId) this.store.update(threadId, { sessionId: id, replay: false }); },
           approve: request => this.ask(threadId, { server: preset.name, ...request }),
           question: request => this.question(threadId, { server: preset.name, ...request }) });
@@ -177,9 +179,9 @@ class Runner {
         result = preset.kind === 'anthropic' ? await anthropic.run(api) : await openai.run({ ...api, baseURL: connection.baseURL || preset.baseURL });
       }
       const stopped = controller.signal.aborted;
-      const saved = finish(stopped && !draft.parts.length ? null : { parts: draft.final(), native: result?.native, ...(stopped ? { stopped: true } : {}) });
-      // Claude Code makes its own suggestions; the other providers make them with one extra request when the user turns it on.
-      if (saved && !stopped && preset.cli !== 'claude' && this.store.data.preferences.suggestReplies) this.suggestReplies(threadId, connection, preset, saved).catch(() => {});
+      saved = finish(stopped && !draft.parts.length ? null : { parts: draft.final(), native: result?.native, ...(stopped ? { stopped: true } : {}) });
+      // Claude Code makes one suggestion of its own. With the setting on, every model makes up to three with one extra request.
+      if (saved && !stopped && !saved.error && this.store.data.preferences.suggestReplies) this.suggestReplies(threadId, connection, preset, saved).catch(() => {});
     } catch (error) {
       // A user stop is not a failure: keep whatever arrived and mark it stopped.
       if (controller.signal.aborted) finish(draft.parts.length ? { parts: draft.final(), stopped: true } : null);
@@ -193,9 +195,15 @@ class Runner {
     const request = { apiKey: this.secrets.get(`key:${connection.id}`), model: thread.model, prompt: suggest.prompt(user, reply), signal: AbortSignal.timeout(preset.kind === 'cli' ? 90000 : 30000) };
     const text = preset.kind === 'cli' ? await cli.complete({ preset, ...request })
       : preset.kind === 'anthropic' ? await anthropic.complete(request) : await openai.complete({ ...request, baseURL: connection.baseURL || preset.baseURL });
-    const suggestions = suggest.parse(text);
-    if (!suggestions.length || this.store.thread(threadId).messages.at(-1)?.id !== reply.id) return;
-    this.store.patchMessage(threadId, reply.id, { suggestions });
+    this.addSuggestions(threadId, reply.id, suggest.parse(text));
+  }
+  // Suggestions only matter on the latest reply. Claude Code's own suggestion stays first.
+  addSuggestions(threadId, replyId, list, first = false) {
+    const reply = this.store.thread(threadId).messages.at(-1);
+    if (!list.length || reply?.id !== replyId) return;
+    const own = reply.suggestions || [];
+    const suggestions = [...new Set(first ? [...list, ...own] : [...own, ...list])].slice(0, suggest.MAX + 1);
+    this.store.patchMessage(threadId, replyId, { suggestions });
     this.send('thread-changed', { threadId });
   }
 

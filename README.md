@@ -23,7 +23,7 @@ Hanobi runs on macOS 12 Monterey and later, including Intel Macs. It pins Electr
 - Image attachments for API and local models.
 - Branching: start a new branch from any of your messages, then edit and send it again.
 - Rewind: return to before any of your messages. Rewind the conversation, the workspace files, or both. Before each turn in a Git workspace, Hanobi saves a checkpoint of every file that `.gitignore` does not exclude. It uses a private index, so your index, branches, and stash do not change. Git can delete checkpoints older than two weeks.
-- Suggested replies under the latest reply. Claude Code makes them. API and local models make them when you turn on **Settings → General → Suggested replies** (one extra request per reply).
+- Suggested replies as chips above the message box, and inline completion while you type (Tab or → takes it). Claude Code makes one. Every model makes up to three when you turn on **Settings → General → Suggested replies** (one extra request per reply).
 - Questions: the model can ask you multiple-choice questions during a turn. Claude Code (AskUserQuestion), Codex in **Ask first**, and API and local models (a `hanobi__ask_user` tool) support them.
 - Files in and out of conversations:
   - Attach any file with **+**, drag and drop, or paste. Hanobi copies it into the conversation. Text from PDF, Word, RTF, OpenDocument, PowerPoint, Excel, CSV, and text files goes to every model. API models get images as images. CLI agents also get each file's path.

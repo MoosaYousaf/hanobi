@@ -139,13 +139,18 @@ async function run(options) {
 // How long a turn waits for the output pipes after the CLI exits, and for the CLI to exit after its result.
 const EXIT_GRACE_MS = 400;
 const RESULT_GRACE_MS = 3000;
+// Claude Code makes its suggested next prompt after the result and waits up to 30 s for it before it exits.
+const LATE_MS = 35000;
 
-function runTurn({ preset, thread, history, prompt, cwd, chat = false, mcpServers, draft, signal, onSession, approve, question }) {
+function runTurn({ preset, thread, history, prompt, cwd, chat = false, mcpServers, draft, signal, onSession, approve, question, onSuggestion }) {
   const executable = cliPath(preset.cli);
   if (!executable) throw new Error(`${preset.name} is not installed or not on PATH.`);
   let resume = thread.replay ? null : thread.sessionId;
   const input = thread.replay || (!thread.sessionId && history.length) ? replayPrompt(history, prompt) : prompt;
   const env = { ...process.env, PATH: searchPath().join(path.delimiter), NO_COLOR: '1', COPILOT_AUTO_UPDATE: 'false' };
+  // Without this, Claude Code skips suggestions behind a server flag, near plan limits, and after many unused ones.
+  // Each Hanobi turn is a new process, so Claude Code never sees that a suggestion was used.
+  if (preset.cli === 'claude') env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION = '1';
   if (preset.cli === 'codex' && thread.mode === 'ask' && !chat) return codexServer.run({ executable, env, cwd, input, resume, model: thread.model, effort: thread.effort, draft, signal, onSession, approve, question });
   if (preset.cli === 'copilot' && thread.mode === 'ask' && !chat) return copilotAcp.run({ executable, env, cwd, input, resume, model: thread.model, effort: thread.effort, draft, signal, onSession, approve });
   if (preset.cli === 'copilot' && !resume) { resume = crypto.randomUUID(); onSession(resume); }
@@ -223,15 +228,30 @@ function runTurn({ preset, thread, history, prompt, cwd, chat = false, mcpServer
       signal.removeEventListener('abort', stop);
       handle(pending); pending = '';
       child.stdout.removeAllListeners('data'); child.stderr.removeAllListeners('data');
-      child.stdout.destroy(); child.stderr.destroy(); child.unref();
+      child.stderr.destroy(); child.unref();
+      // The turn ended at its result, but the CLI still runs: its suggestion can come late.
+      if (onSuggestion && exitCode === null && !signal.aborted) late(); else child.stdout.destroy();
       if (signal.aborted) resolve({ stopped: true });
       else if (failure) reject(failure);
       else if (code === 0) resolve({});
       else reject(new Error(stderr.trim() || `${preset.name} exited with ${killedBy || `code ${code}`}.`));
     };
+    let exitCode = null;
+    const late = () => {
+      let rest = '';
+      const stop = setTimeout(() => child.stdout.destroy(), LATE_MS);
+      child.stdout.on('data', chunk => {
+        const lines = (rest + chunk).split('\n');
+        rest = lines.pop();
+        for (const line of lines) {
+          try { const event = JSON.parse(line); if (event.type === 'prompt_suggestion' && event.suggestion?.trim()) onSuggestion(event.suggestion.trim()); } catch {}
+        }
+      });
+      child.stdout.on('close', () => clearTimeout(stop));
+    };
     ended = () => { if (!timer) timer = setTimeout(() => finish(0), RESULT_GRACE_MS); };
     child.on('error', reject);
-    child.on('exit', (code, killedBy) => { clearTimeout(timer); timer = setTimeout(() => finish(code, killedBy), EXIT_GRACE_MS); });
+    child.on('exit', (code, killedBy) => { exitCode = code ?? killedBy; clearTimeout(timer); timer = setTimeout(() => finish(code, killedBy), EXIT_GRACE_MS); });
     child.on('close', finish);
   });
 }

@@ -52,7 +52,7 @@ export function FileCard({ file }) {
       </button>
       <span className="file-actions">
         <IconAction label="Preview" onClick={act('files:preview')}><Eye size={14} /></IconAction>
-        <IconAction label={copied ? 'Copied' : 'Copy'} onClick={act('files:copy', () => { setCopied(true); setTimeout(() => setCopied(false), 1400); })}>{copied ? <Check size={14} /> : <Copy size={14} />}</IconAction>
+        <IconAction label={copied ? 'Copied' : 'Copy'} onClick={act('files:copy', () => { toast(`${file.name} copied to the clipboard`); setCopied(true); setTimeout(() => setCopied(false), 1400); })}>{copied ? <Check size={14} /> : <Copy size={14} />}</IconAction>
         <IconAction label="Download" onClick={act('files:save-copy', saved => saved && toast(`Saved to ${saved}`))}><Download size={14} /></IconAction>
         <IconAction label="More" onClick={e => setMenu(e.currentTarget.getBoundingClientRect())}><MoreHorizontal size={14} /></IconAction>
       </span>

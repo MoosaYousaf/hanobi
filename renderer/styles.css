@@ -464,8 +464,8 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 .btn.danger:hover { filter: brightness(1.08); }
 
-.edit-box { width: min(100%, 640px); display: grid; gap: 8px; }
-.edit-box textarea { width: 100%; resize: vertical; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--accent); background: var(--surface); color: var(--text); font: inherit; line-height: 1.5; }
+.edit-box { width: 100%; display: grid; gap: 8px; }
+.edit-box textarea { width: 100%; box-sizing: border-box; min-height: 64px; max-height: 60vh; overflow-y: auto; resize: none; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--accent); background: var(--surface); color: var(--text); font: inherit; line-height: 1.5; }
 .edit-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .edit-actions .hint { margin: 0 auto 0 0; }
 

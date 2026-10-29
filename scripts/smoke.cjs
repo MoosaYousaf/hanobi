@@ -50,7 +50,7 @@ const inHours = h => Date.now() + h * 3600 * 1000;
 process.env.HANOBI_LIMITS_FIXTURE = JSON.stringify({ claude: { plan: 'Claude Pro', windows: [{ id: 'five_hour', label: 'Session (5 hours)', used: 54, resetsAt: inHours(2) }, { id: 'seven_day', label: 'Week', used: 86, resetsAt: inHours(50) }], note: '' } });
 // A fake speech helper streams words without a microphone.
 process.env.HANOBI_SPEECH_HELPER = path.join(__dirname, '../test/fixtures/fake-speech.cjs');
-const { app, BrowserWindow, nativeTheme, dialog, systemPreferences } = require('electron');
+const { app, BrowserWindow, nativeTheme, dialog, systemPreferences, clipboard } = require('electron');
 // The microphone first answers "denied", so voice input shows its permission message without a macOS prompt.
 let microphone = 'denied';
 systemPreferences.getMediaAccessStatus = () => microphone;
@@ -127,6 +127,11 @@ app.whenReady().then(async () => {
     await clickText(win, '.code-btn', 'Preview');
     await until(win, `[...document.querySelectorAll('.snippet-table td')].map(e => e.textContent).join() === 'North,12,South,9'`, 'CSV preview shows a table');
     await shot(win, '1d-files');
+    // Copy puts the exact snippet on the clipboard (through main) and says so.
+    clipboard.writeText('');
+    await win.webContents.executeJavaScript(`document.querySelectorAll('.code-block')[1].querySelector('[aria-label="Copy code"]').click()`);
+    await until(win, `document.querySelector('.toast')?.textContent === 'Code copied to the clipboard'`, 'copy confirms with a toast');
+    if (clipboard.readText() !== 'print("done")') throw new Error(`Copy wrote ${JSON.stringify(clipboard.readText())}`);
     // Run opens the HTML snippet with scripts on, in its own window without Node.js or the Hanobi bridge.
     const windowCount = BrowserWindow.getAllWindows().length;
     await clickText(win, '.code-btn', 'Run');
@@ -197,6 +202,12 @@ app.whenReady().then(async () => {
     await clickText(win, '.thread-row', 'Parse the release notes');
     await until(win, `document.querySelectorAll('.msg').length === 2`, 'thread reopens');
     await until(win, `['Copy', 'Edit', 'Rewind', 'Branch'].every(t => document.querySelector('.msg.user [data-tip="' + t + '"]'))`, 'user message actions');
+    // Edit opens a full-width box that fits the text, then Escape puts the bubble back.
+    await click(win, '.msg.user [data-tip="Edit"]');
+    await until(win, `(() => { const t = document.querySelector('.edit-box textarea'); return t && t.scrollHeight <= t.clientHeight + 2 && t.getBoundingClientRect().width >= document.querySelector('.msg.user').getBoundingClientRect().width - 1; })()`, 'edit box fits its text and the column');
+    await shot(win, '5b-edit');
+    await win.webContents.executeJavaScript(`document.querySelector('.edit-box textarea').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+    await until(win, `!document.querySelector('.edit-box') && !!document.querySelector('.user-bubble')`, 'Escape leaves edit');
     await click(win, '.msg.user [data-tip="Rewind"]');
     await until(win, `!!document.querySelector('.rewind-menu') && document.querySelector('.rewind-note')?.textContent.includes('Git')`, 'rewind menu opens');
     await shot(win, '6-rewind');
@@ -261,7 +272,7 @@ app.whenReady().then(async () => {
     })()`);
     await until(win, `(${JSON.stringify(listed)}).at(-1) === [...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row .thread-title')][0].textContent`, 'dragging a conversation reorders the list');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, preview, and isolated Run, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
+    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
     app.exit(0);
   } catch (error) {
     if (errors.length) console.error('Console errors:\n' + errors.join('\n')); process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }

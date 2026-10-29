@@ -31,6 +31,10 @@ export function toast(message) {
   set({ toast: String(message?.message || message).replace(/^Error invoking remote method '[^']+': (Error: )?/, '') });
   toastTimer = setTimeout(() => set({ toast: null }), 4200);
 }
+// Copies text through main and confirms it. Returns true when the text is on the clipboard.
+export async function copyText(text, what = 'Text') {
+  try { await call('clipboard:write', text); toast(`${what} copied to the clipboard`); return true; } catch (error) { toast(error); return false; }
+}
 // Wraps an action so a failure shows a toast instead of an unhandled rejection.
 export const guard = fn => async (...args) => { try { return await fn(...args); } catch (error) { toast(error); } };
 

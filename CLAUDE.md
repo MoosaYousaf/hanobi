@@ -5,7 +5,7 @@ Desktop harness for any LLM (CLI subscriptions, API keys, local models, MCP). El
 ## Commands
 
 ```sh
-npm start            # build renderer, open the app
+npm start            # build renderer, open "Hanobi Dev" (own data folder; runs next to the installed app)
 npm test             # node --test test/*.test.js (fake model servers + a real stdio MCP server)
 npm run smoke        # real app, throwaway data; SMOKE_SHOTS=<dir> saves light/dark screenshots
 npm run icons        # build/icon.svg -> icon.icns/png, docs/cover.html -> cover.png

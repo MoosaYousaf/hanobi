@@ -22,9 +22,11 @@ const { Limits } = require('./limits');
 // From package.json, not from Electron: a script started with `electron <file>` reports Electron's version.
 const VERSION = require('../package.json').version;
 
-app.setName('Hanobi');
+// `npm start` runs as Hanobi Dev with its own data folder and instance lock, so it opens next to the installed app.
+app.setName(app.isPackaged ? 'Hanobi' : 'Hanobi Dev');
 // Tests and smoke runs use a throwaway data folder.
 if (process.env.HANOBI_USER_DATA) app.setPath('userData', process.env.HANOBI_USER_DATA);
+else if (!app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'Hanobi Dev'));
 // One Hanobi at a time: a second launch shows the open window.
 if (!app.requestSingleInstanceLock()) app.quit();
 const windows = new Set();
@@ -361,6 +363,8 @@ const handlers = {
     await files.render(target.filePath, /\.(docx|rtf|odt|pdf|html?)$/i.test(target.filePath) && html ? html : text);
     return target.filePath;
   },
+  // The renderer has no clipboard permission (see the permission check handler), so text copies go through main.
+  'clipboard:write': text => { clipboard.writeText(String(text ?? '')); },
   'snippet:run': (html, title) => { runHtml(html, title); },
   'files:run': async (threadId, file) => { const full = await threadFile(threadId, file); if (!/\.html?$/i.test(full)) throw new Error('Only HTML files can run.'); runHtml(fs.readFileSync(full, 'utf8'), path.basename(full)); },
   // macOS asks once for the microphone. Returns false when the user said no.

@@ -1,10 +1,10 @@
-import { memo, useState, useRef } from 'react';
+import { memo, useState, useRef, useLayoutEffect } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChevronRight, Check, Copy, Wrench, CircleAlert, Ban, Clock, GitBranch, RotateCcw, Pencil, Download, Eye, Code, Play } from 'lucide-react';
 import { Working } from './Spark.jsx';
 import { FileCard, ToolFiles, ExportMenu, exportText, markdownHtml, snippetName, previewKind, SnippetPreview, LABELS } from './Files.jsx';
-import { useStore, answerApproval, answerQuestion, guard, call, toast } from '../store.js';
+import { useStore, answerApproval, answerQuestion, guard, call, toast, copyText } from '../store.js';
 
 const plugins = [remarkGfm];
 
@@ -19,7 +19,7 @@ function CodeBlock({ node, children, ...props }) {
   const kind = previewKind(name);
   const [copied, setCopied] = useState(false);
   const [preview, setPreview] = useState(false);
-  const copy = () => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1400); };
+  const copy = async () => { if (await copyText(text, 'Code')) { setCopied(true); setTimeout(() => setCopied(false), 1400); } };
   const named = !name.startsWith('snippet.');
   const extension = name.split('.').pop();
   const download = () => exportText({ name, text, html: kind === 'md' ? markdownHtml(text) : kind === 'html' ? text : '' });
@@ -174,17 +174,26 @@ function DownloadAction({ message }) {
 
 function CopyAction({ message }) {
   const [copied, setCopied] = useState(false);
-  const copy = () => { navigator.clipboard.writeText(textOf(message)); setCopied(true); setTimeout(() => setCopied(false), 1400); };
+  const copy = async () => { if (await copyText(textOf(message), 'Message')) { setCopied(true); setTimeout(() => setCopied(false), 1400); } };
   return <Action label={copied ? 'Copied' : 'Copy'} onClick={copy}>{copied ? <Check size={14} /> : <Copy size={14} />}</Action>;
 }
 
 // Editing a message replaces it and everything after it, then sends the new text.
 function EditBox({ message, onSave, onCancel }) {
   const [text, setText] = useState(textOf(message));
+  const box = useRef(null);
+  // The box grows with the text, wrapped lines included, so a long message does not open in two rows.
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [text]);
+  useLayoutEffect(() => { const el = box.current; el?.setSelectionRange(el.value.length, el.value.length); }, []);
   const save = () => { if (text.trim()) onSave(message, text.trim()); };
   return (
     <div className="edit-box">
-      <textarea autoFocus value={text} rows={Math.min(12, text.split('\n').length + 1)} onChange={e => setText(e.target.value)}
+      <textarea ref={box} autoFocus value={text} rows={2} onChange={e => setText(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); } if (e.key === 'Escape') onCancel(); }} />
       <div className="edit-actions">
         <span className="hint">The replies after this message are replaced.</span>

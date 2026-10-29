@@ -1,6 +1,6 @@
 {
   "name": "hanobi",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "A lightweight desktop harness for any LLM: subscriptions, API keys, local models, and MCP connectors. Runs on macOS 12+.",
   "main": "electron/main.js",

@@ -1,6 +1,28 @@
-# Orbit Code
+<p align="center"><img src="docs/cover.png" alt="Hanobi" width="860"></p>
 
-A desktop workspace for Claude Code, Codex, and Gemini CLI. Built with Electron 40.3.0 so it can run on macOS 12 Monterey. Each agent runs through its installed CLI and uses that CLI's existing sign-in and local configuration.
+# Hanobi
+
+Hanobi is a lightweight desktop harness for the language models you use. One window connects to three types of model source:
+
+| Route | How it connects | Examples |
+| --- | --- | --- |
+| Subscription | Runs the official CLI with your existing sign-in. Hanobi never reads CLI tokens. | Claude Code (Claude Pro/Max), Codex (ChatGPT), Gemini CLI |
+| API key | Calls the provider API. Keys are encrypted with the macOS Keychain. | Anthropic, OpenAI, Google Gemini, OpenRouter, any OpenAI-compatible URL |
+| Local | Calls a model server on this Mac. No key, no network. | Ollama, LM Studio |
+
+Hanobi runs on macOS 12 Monterey and later, including Intel Macs. It pins Electron 40.3.0 to keep macOS 12 support.
+
+## Features
+
+- Conversations grouped by project folder, plus a general **Chats** folder.
+- A model picker for every connected model. You can switch models in the middle of a conversation. A model from the same provider continues with the full native history. A model from a different provider gets a text transcript.
+- Streaming Markdown replies, thought summaries, and expandable tool calls.
+- MCP connectors over stdio or Streamable HTTP, including OAuth sign-in (for example, Notion). API and local models ask before each tool call, unless you choose **Allow tools**. Claude Code receives the connectors that do not use OAuth.
+- Image attachments for API and local models.
+- Branching: start a new branch from any of your messages, then edit and send it again.
+- Git panel: status, diffs, stage, unstage, commit, and a link to the GitHub remote.
+- A list of the skills that your CLI agents load.
+- Light and dark themes that follow macOS, multiple windows, and keyboard shortcuts (`⌘N`, `⌘,`, `⌘\`).
 
 ## Run
 
@@ -9,26 +31,50 @@ npm install
 npm start
 ```
 
-Install and sign in to at least one provider CLI before starting a conversation. Open a project folder with **Add workspace**, choose an agent, and send a prompt. Choose a model from the dropdown and set effort with the slider. These choices persist per provider. Gemini CLI manages effort in its own configuration, so Orbit disables that slider for Gemini. Choose an access mode before running: provider default, read only, auto edits, or full access. Press **Enter** to send and **Shift+Enter** for a new line. Use **File → New Window** for another view.
+Then open **Settings → Models**:
 
-## Features
+- **Subscriptions:** install a CLI (for example, `claude`) and sign in from Terminal. Hanobi finds it automatically. Click the rescan button after you install one.
+- **API keys:** click **Add a provider**, choose a provider, and paste a key.
+- **Local:** start Ollama or LM Studio, then add it. Hanobi lists the downloaded models.
 
-- Multiple workspaces, conversations, and windows
-- Live agent output and tool activity, with local conversation history
-- Conversation branching from any earlier user message
-- Local Git status, diffs, staging, commits, and a link to a GitHub origin remote
-- Read-only list of skills found in the workspace and provider skill folders
+Gemini CLI does not serve personal Google AI plans now. Those accounts moved to Antigravity. To use Gemini with a personal account, add a **Google Gemini API** key.
 
-## Current boundaries
+## Access modes
 
-Conversation branching replays earlier chat context into a new provider session. It does not revert files. Git operations use your existing local Git credentials. The GitHub integration opens the origin repository; pull requests, issues, and remote sync are not implemented yet. The default access selection is **Auto edits**. Provider default may deny actions that need an interactive approval prompt in this headless view. Full access bypasses provider approval and sandbox controls; the app asks before enabling it. The working folder is shown below the composer. macOS may still ask for folder access on first use. Provider CLI versions can change their stream formats, so integration may need updates.
+| Mode | CLI agents | API and local models |
+| --- | --- | --- |
+| CLI rules | The CLI's saved permission rules. Requests that need an interactive prompt are denied. | n/a |
+| Read only | Plan mode or read-only sandbox | n/a |
+| Auto edits (default for CLIs) | File edits allowed. Other actions follow the CLI. | n/a |
+| Ask first (default for APIs) | n/a | Hanobi asks before each MCP tool call |
+| Full access / Allow tools | No approval and no sandbox. Hanobi asks you to confirm first. | Tools run without asking |
 
-Conversations are stored at Electron's `userData/orbit-data.json` with user-only file permissions. This includes prompt and response text. The app does not store provider credentials.
+## Privacy and security
 
-## Package
+- Conversations are stored in `~/Library/Application Support/Hanobi/hanobi-data.json` with user-only file permissions.
+- API keys, MCP environment values, headers, and OAuth tokens are stored in `hanobi-secrets.json`. Electron `safeStorage` encrypts them with the macOS Keychain. The renderer never receives these values.
+- Prompts go only to the model you choose and to the MCP servers that you turn on.
+- The renderer runs sandboxed with context isolation and a strict Content Security Policy. Links open in your browser.
+- Data from Orbit Code (the earlier name) is copied over on first launch.
+
+## Development
 
 ```sh
-npm run package:mac
+npm test            # unit and end-to-end tests (fake model servers, a real MCP server)
+npm run smoke       # starts the real app with throwaway data and drives the UI
+npm run icons       # renders build/icon.icns and docs/cover.png from their sources
+npm run package:mac # unsigned DMG and ZIP in dist/release
 ```
 
-The app is unsigned. macOS may require a local security exception before opening a packaged build.
+`SMOKE_SHOTS=<folder> npm run smoke` saves light and dark screenshots. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the parts fit together.
+
+The packaged app is unsigned. macOS may ask you to allow it in **System Settings → Privacy & Security**.
+
+## Roadmap
+
+1. Live verification of each subscription CLI and API provider on real accounts.
+2. Structured approval prompts for CLI agents, instead of pre-set modes.
+3. File checkpoints and rewind, aware of uncommitted Git changes.
+4. GitHub pull requests, branches, and review status.
+5. Project knowledge: attach files and folders to API conversations.
+6. Signing, notarization, auto-update, a license, and contributor guidelines before a public release.

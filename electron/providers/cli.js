@@ -1,0 +1,134 @@
+const { spawn } = require('node:child_process');
+const fs = require('node:fs');
+const path = require('node:path');
+const { replayPrompt } = require('./transcript');
+
+// Apps opened from Finder get a minimal PATH, so look where CLIs and npx are usually installed.
+function searchPath() {
+  const home = process.env.HOME || '';
+  const nvm = (() => { try { return fs.readdirSync(path.join(home, '.nvm/versions/node')).reverse().map(v => path.join(home, '.nvm/versions/node', v, 'bin')); } catch { return []; } })();
+  return [...new Set([path.join(home, '.local/bin'), path.join(home, '.npm-global/bin'), ...(process.env.PATH || '').split(path.delimiter), ...nvm, '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'].filter(Boolean))];
+}
+
+const located = new Map();
+function cliPath(name, refresh = false) {
+  if (!refresh && located.has(name)) return located.get(name);
+  const found = searchPath().map(d => path.join(d, name)).find(p => { try { fs.accessSync(p, fs.constants.X_OK); return true; } catch { return false; } }) || null;
+  located.set(name, found);
+  return found;
+}
+
+// Claude Code accepts Hanobi's MCP servers directly. OAuth servers are skipped: the CLI signs in to those itself.
+function claudeMcpConfig(servers) {
+  const mcpServers = {};
+  for (const s of servers) {
+    if (s.transport === 'stdio') mcpServers[s.name] = { command: s.command, args: s.args || [], env: s.env || {} };
+    else if (!s.oauth) mcpServers[s.name] = { type: 'http', url: s.url, headers: s.headers || {} };
+  }
+  return Object.keys(mcpServers).length ? ['--mcp-config', JSON.stringify({ mcpServers })] : [];
+}
+
+// The prompt always goes through stdin, so prompt text can never be parsed as a CLI option.
+function command(cli, { sessionId, model = '', effort = '', mode = 'auto', mcpServers = [] }) {
+  const modelArgs = model ? ['--model', model] : [];
+  if (cli === 'claude') {
+    const permission = { default: [], read: ['--permission-mode', 'plan'], auto: ['--permission-mode', 'acceptEdits'], full: ['--permission-mode', 'bypassPermissions'] }[mode];
+    return ['-p', '--output-format', 'stream-json', '--include-partial-messages', '--verbose', ...permission, ...modelArgs, ...(effort ? ['--effort', effort] : []), ...(sessionId ? ['--resume', sessionId] : []), ...claudeMcpConfig(mcpServers)];
+  }
+  if (cli === 'codex') {
+    const access = { default: [], read: ['--sandbox', 'read-only', '-c', 'approval_policy="never"'], auto: ['--sandbox', 'workspace-write', '-c', 'approval_policy="never"'], full: ['--dangerously-bypass-approvals-and-sandbox'] }[mode];
+    return ['exec', '--json', '--skip-git-repo-check', ...access, ...modelArgs, ...(effort ? ['-c', `model_reasoning_effort="${effort}"`] : []), ...(sessionId ? ['resume', sessionId] : []), '-'];
+  }
+  if (cli === 'gemini') {
+    const access = { default: ['--approval-mode', 'default'], read: ['--approval-mode', 'plan'], auto: ['--approval-mode', 'auto_edit'], full: ['--approval-mode', 'yolo'] }[mode];
+    return ['-p', '', '--output-format', 'stream-json', ...access, ...modelArgs, ...(sessionId ? ['--resume', sessionId] : [])];
+  }
+  throw new Error('Unknown CLI.');
+}
+
+const asText = value => (typeof value === 'string' ? value : Array.isArray(value) ? value.map(v => v.text ?? '').join('\n') : JSON.stringify(value ?? ''));
+
+// Applies one JSON event from a CLI to the draft. Returns a session id when the event carries one.
+function apply(cli, event, draft) {
+  if (cli === 'claude') {
+    if (event.type === 'system' && event.subtype === 'init') return event.session_id;
+    if (event.type === 'stream_event') {
+      const e = event.event;
+      if (e?.type === 'content_block_start' && e.content_block?.type === 'text' && draft.last('text')) draft.parts.push({ type: 'text', text: '' });
+      if (e?.type === 'content_block_delta' && e.delta?.type === 'text_delta') draft.write('text', e.delta.text);
+      if (e?.type === 'content_block_delta' && e.delta?.type === 'thinking_delta') draft.write('thinking', e.delta.thinking);
+    } else if (event.type === 'assistant') {
+      // Text already arrived as deltas; only tool calls are taken from the full message.
+      for (const block of event.message?.content || []) if (block.type === 'tool_use') draft.tool({ id: block.id, name: block.name, input: block.input });
+    } else if (event.type === 'user') {
+      for (const block of event.message?.content || []) if (block.type === 'tool_result') draft.toolResult(block.tool_use_id, { output: asText(block.content), isError: !!block.is_error });
+    } else if (event.type === 'result') {
+      if (event.is_error) throw new Error(asText(event.result) || 'Claude Code reported an error.');
+      if (!draft.hasText() && event.result) draft.write('text', event.result);
+      return event.session_id;
+    }
+  } else if (cli === 'codex') {
+    if (event.type === 'thread.started') return event.thread_id;
+    const item = event.item || {};
+    if (event.type === 'item.started' && item.type === 'command_execution') draft.tool({ id: item.id, name: 'Command', input: item.command });
+    if (event.type === 'item.completed') {
+      if (item.type === 'agent_message') draft.write('text', (draft.last('text') ? '\n\n' : '') + (item.text || ''));
+      else if (item.type === 'reasoning') draft.write('thinking', item.text || '');
+      else if (item.type === 'command_execution') { draft.tool({ id: item.id, name: 'Command', input: item.command }); draft.toolResult(item.id, { output: item.aggregated_output || '', isError: item.exit_code ? item.exit_code !== 0 : false }); }
+      else if (item.type === 'file_change') { draft.tool({ id: item.id, name: 'File change', input: item.changes }); draft.toolResult(item.id, { output: item.status || 'applied' }); }
+      else if (item.type === 'mcp_tool_call') { draft.tool({ id: item.id, name: `${item.server}.${item.tool}`, input: item.arguments }); draft.toolResult(item.id, { output: asText(item.result?.content), isError: item.status === 'failed' }); }
+    }
+    if (event.type === 'turn.failed') throw new Error(event.error?.message || 'Codex turn failed.');
+    if (event.type === 'error') throw new Error(event.message || 'Codex error.');
+  } else if (cli === 'gemini') {
+    if (event.type === 'init') return event.session_id;
+    // Gemini streams assistant text as delta chunks; non-delta messages replace the block.
+    if (event.type === 'message' && event.role === 'assistant') draft.write('text', event.content || '', !!event.delta);
+    if (event.type === 'tool_use') draft.tool({ id: event.tool_id, name: event.tool_name || 'Tool', input: event.parameters });
+    if (event.type === 'tool_result') draft.toolResult(event.tool_id, { output: asText(event.output ?? event.error?.message), isError: event.status === 'error' });
+    if (event.type === 'error') throw new Error(event.message || 'Gemini error.');
+    if (event.type === 'result' && event.status === 'error') throw new Error(event.error?.message || 'Gemini run failed.');
+  }
+  return null;
+}
+
+function run({ preset, thread, history, prompt, cwd, mcpServers, draft, signal, onSession }) {
+  const executable = cliPath(preset.cli);
+  if (!executable) throw new Error(`${preset.name} is not installed or not on PATH.`);
+  const resume = thread.replay ? null : thread.sessionId;
+  const input = thread.replay || (!thread.sessionId && history.length) ? replayPrompt(history, prompt) : prompt;
+  const args = command(preset.cli, { ...thread, sessionId: resume, mcpServers: preset.cli === 'claude' ? mcpServers : [] });
+  const child = spawn(executable, args, { cwd, env: { ...process.env, PATH: searchPath().join(path.delimiter), NO_COLOR: '1' }, stdio: ['pipe', 'pipe', 'pipe'] });
+  child.stdin.end(input);
+  let pending = '', stderr = '', failure = null;
+  const handle = line => {
+    if (!line.trim()) return;
+    let event;
+    try { event = JSON.parse(line); } catch { draft.write('text', line + '\n'); return; }
+    try { const session = apply(preset.cli, event, draft); if (session) onSession(session); }
+    catch (error) { failure ||= error; }
+  };
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', chunk => {
+    const lines = (pending + chunk).split('\n');
+    pending = lines.pop();
+    lines.forEach(handle);
+  });
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-16000); });
+  const stop = () => child.kill('SIGTERM');
+  signal.addEventListener('abort', stop, { once: true });
+  return new Promise((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', (code, killedBy) => {
+      signal.removeEventListener('abort', stop);
+      handle(pending);
+      if (signal.aborted) resolve({ stopped: true });
+      else if (failure) reject(failure);
+      else if (code === 0) resolve({});
+      else reject(new Error(stderr.trim() || `${preset.name} exited with ${killedBy || `code ${code}`}.`));
+    });
+  });
+}
+
+module.exports = { searchPath, cliPath, command, apply, run };

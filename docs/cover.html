@@ -1,0 +1,22 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  html, body { margin: 0; width: 1280px; height: 640px; overflow: hidden; }
+  body { background: radial-gradient(900px 520px at 18% 40%, rgba(240,100,58,.20), transparent 60%), #121211; font-family: -apple-system, BlinkMacSystemFont, sans-serif; color: #ecebe5; position: relative; }
+  .copy { position: absolute; left: 84px; top: 150px; width: 430px; }
+  .copy img { width: 116px; height: 116px; display: block; margin: 0 0 26px -12px; }
+  h1 { font-size: 76px; font-weight: 700; letter-spacing: -.035em; margin: 0 0 14px; }
+  p { font-size: 23px; line-height: 1.42; color: #a7a69e; margin: 0; letter-spacing: -.005em; }
+  .routes { margin-top: 28px; display: flex; gap: 10px; font: 500 15px ui-monospace, "SF Mono", Menlo, monospace; color: #74736c; }
+  .routes span + span::before { content: '·'; margin-right: 10px; color: #3c3c38; }
+  .shot { position: absolute; left: 560px; top: 78px; width: 900px; border-radius: 14px; overflow: hidden; border: 1px solid #3c3c38; box-shadow: 0 30px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.4); }
+  .shot img { display: block; width: 100%; }
+</style></head>
+<body>
+  <div class="copy">
+    <img src="../build/icon.svg" alt="">
+    <h1>Hanobi</h1>
+    <p>A lightweight desktop harness for every model you use.</p>
+    <div class="routes"><span>subscriptions</span><span>API keys</span><span>local</span><span>MCP</span></div>
+  </div>
+  <div class="shot"><img src="screenshot-dark.png" alt=""></div>
+</body></html>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="100" x2="0" y2="924" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2c2c29"/><stop offset="1" stop-color="#111110"/></linearGradient>
+    <radialGradient id="glow" cx="512" cy="512" r="400" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff7a3d" stop-opacity=".5"/><stop offset=".45" stop-color="#f0643a" stop-opacity=".14"/><stop offset="1" stop-color="#f0643a" stop-opacity="0"/></radialGradient>
+    <radialGradient id="ray" cx="512" cy="512" r="330" gradientUnits="userSpaceOnUse"><stop offset=".2" stop-color="#ffe7b0"/><stop offset=".5" stop-color="#ffa057"/><stop offset="1" stop-color="#e5452a"/></radialGradient>
+    <clipPath id="body"><rect x="100" y="100" width="824" height="824" rx="186"/></clipPath>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+  <g clip-path="url(#body)"><circle cx="512" cy="512" r="400" fill="url(#glow)"/></g>
+  <g stroke="url(#ray)" stroke-linecap="round"><line x1="512" y1="394" x2="512" y2="212" stroke-width="36"/><line x1="587" y1="382.1" x2="630" y2="307.6" stroke-width="28"/><line x1="614.2" y1="453" x2="771.8" y2="362" stroke-width="36"/><line x1="662" y1="512" x2="748" y2="512" stroke-width="28"/><line x1="614.2" y1="571" x2="771.8" y2="662" stroke-width="36"/><line x1="587" y1="641.9" x2="630" y2="716.4" stroke-width="28"/><line x1="512" y1="630" x2="512" y2="812" stroke-width="36"/><line x1="437" y1="641.9" x2="394" y2="716.4" stroke-width="28"/><line x1="409.8" y1="571" x2="252.2" y2="662" stroke-width="36"/><line x1="362" y1="512" x2="276" y2="512" stroke-width="28"/><line x1="409.8" y1="453" x2="252.2" y2="362" stroke-width="36"/><line x1="437" y1="382.1" x2="394" y2="307.6" stroke-width="28"/></g>
+  <g fill="#ffb571" opacity=".85"><circle cx="512" cy="162" r="12"/><circle cx="815.1" cy="337" r="12"/><circle cx="815.1" cy="687" r="12"/><circle cx="512" cy="862" r="12"/><circle cx="208.9" cy="687" r="12"/><circle cx="208.9" cy="337" r="12"/></g>
+  <circle cx="512" cy="512" r="44" fill="#fff1d4"/>
+  <rect x="101" y="101" width="822" height="822" rx="185" fill="none" stroke="#ffffff" stroke-opacity=".09" stroke-width="2"/>
+</svg>

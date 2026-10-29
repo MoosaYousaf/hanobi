@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Plus, RefreshCw, Trash2, ExternalLink, Plug, Cpu, SlidersHorizontal, LogIn, Pencil } from 'lucide-react';
+import { X, Plus, RefreshCw, Trash2, ExternalLink, Plug, Cpu, SlidersHorizontal, Pencil } from 'lucide-react';
 import { useStore, setUi, call, guard, toast } from '../store.js';
 import { routeIcon } from './ModelPicker.jsx';
 import { routeLabel } from '../labels.js';
@@ -124,7 +124,8 @@ function ConnectorForm({ initial, onDone }) {
   const save = guard(async () => {
     const id = await call('mcp:save', { ...form, args: (form.args || '').split(/\s+/).filter(Boolean), env: Object.fromEntries(form.env), headers: Object.fromEntries(form.headers) });
     onDone();
-    if (!form.oauth) await call('mcp:connect', id).catch(toast);
+    if (form.oauth) toast(`${form.name} saved. Click Connect to approve access in your browser.`);
+    else await call('mcp:connect', id).catch(toast);
   });
   return (
     <div className="form">
@@ -157,7 +158,7 @@ function ConnectorForm({ initial, onDone }) {
   );
 }
 
-const stateText = { connected: 'Connected', connecting: 'Connecting…', authorizing: 'Waiting for sign-in…', 'needs-auth': 'Sign in needed', error: 'Error', disconnected: 'Disconnected' };
+const stateText = { connected: 'Connected', connecting: 'Connecting…', authorizing: 'Finish in your browser…', 'needs-auth': 'Not connected', error: 'Error', disconnected: 'Not connected' };
 
 function ConnectorsPane() {
   const servers = useStore(s => s.app.mcpServers);
@@ -171,12 +172,22 @@ function ConnectorsPane() {
       <ul className="rows">
         {servers.map(s => {
           const st = status[s.id] || {};
+          const connected = s.enabled && st.state === 'connected';
+          const busy = st.state === 'connecting' || st.state === 'authorizing';
+          const detail = st.error || (connected ? `${st.toolCount} ${st.toolCount === 1 ? 'tool' : 'tools'}` : s.transport === 'stdio' ? `${s.command} ${(s.args || []).join(' ')}` : s.url);
           return (
             <li key={s.id} className="row">
-              <label className="switch" title={s.enabled ? 'Turn off' : 'Turn on'}><input type="checkbox" checked={s.enabled} onChange={guard(e => call('mcp:toggle', s.id, e.target.checked))} /><i /></label>
-              <div className="row-main"><strong>{s.name}</strong><span>{st.error || (st.state === 'connected' ? `${st.toolCount} tools` : s.transport === 'stdio' ? `${s.command} ${(s.args || []).join(' ')}` : s.url)}</span></div>
-              <Status ok={st.state === 'connected'}>{stateText[st.state] || (s.enabled ? 'Not connected' : 'Off')}</Status>
-              {s.enabled ? <button className="icon-btn sm" title={s.oauth ? 'Sign in' : 'Connect'} onClick={guard(() => call('mcp:connect', s.id))}>{s.oauth ? <LogIn size={13} /> : <RefreshCw size={13} />}</button> : null}
+              <Plug size={15} />
+              <div className="row-main"><strong>{s.name}</strong><span title={detail}>{detail}</span></div>
+              <Status ok={connected}>{s.enabled ? stateText[st.state] || 'Not connected' : 'Off'}</Status>
+              {connected ? (
+                <>
+                  <button className="btn sm" onClick={guard(() => call('mcp:connect', s.id))}>Reconnect</button>
+                  <button className="btn sm" onClick={guard(() => call('mcp:disconnect', s.id))} title={s.oauth ? 'Turn off and delete the saved sign-in' : 'Turn off'}>Disconnect</button>
+                </>
+              ) : (
+                <button className="btn sm primary" disabled={busy} onClick={guard(() => call('mcp:connect', s.id))} title={s.oauth ? 'Opens the provider’s page in your browser to approve access' : 'Start the connector and load its tools'}>Connect</button>
+              )}
               <button className="icon-btn sm" title="Edit" onClick={() => setEditing(s)}><Pencil size={13} /></button>
               <button className="icon-btn sm" title="Remove" onClick={guard(async () => { if (confirm(`Remove ${s.name}?`)) await call('mcp:remove', s.id); })}><Trash2 size={13} /></button>
             </li>

@@ -9,7 +9,8 @@ const folder = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'hanobi-pro
 const now = Date.now();
 const text = t => ({ type: 'text', text: t });
 fs.writeFileSync(path.join(process.env.HANOBI_USER_DATA, 'hanobi-data.json'), JSON.stringify({
-  version: 2, workspaces: [{ id: 'w1', name: 'hanobi', path: folder }], connections: [], mcpServers: [], modelCache: {}, preferences: { theme: 'system', systemPrompt: '', lastModel: null },
+  version: 2, workspaces: [{ id: 'w1', name: 'hanobi', path: folder }], connections: [],
+  mcpServers: [{ id: 'notes', name: 'Notes', transport: 'stdio', command: 'node', args: [path.join(__dirname, '../test/fixtures/notes-server.cjs')], url: '', oauth: false, enabled: false }], modelCache: {}, preferences: { theme: 'system', systemPrompt: '', lastModel: null },
   threads: [{ id: 't1', workspaceId: 'w1', title: 'Parse the release notes', connectionId: 'claude-code', model: 'claude-opus-5-5', effort: 'high', mode: 'auto', sessionId: null, replay: false, createdAt: now, updatedAt: now, messages: [
     { id: 'm1', at: now, role: 'user', parts: [text('Find every breaking change in CHANGELOG.md and summarize them.')] },
     { id: 'm2', at: now, role: 'assistant', connectionId: 'claude-code', model: 'claude-opus-5-5', parts: [
@@ -70,11 +71,16 @@ app.whenReady().then(async () => {
     await until(win, `!!document.querySelector('.preset-grid')`, 'provider form opens');
     await shot(win, '3-settings');
     await clickText(win, '.settings-nav button', 'Connectors');
+    await clickText(win, '.settings .row .btn', 'Connect');
+    await until(win, `[...document.querySelectorAll('.settings .row .btn')].some(b => b.textContent === 'Disconnect') && document.querySelector('.settings .row').textContent.includes('1 tool')`, 'connector connects', 15000);
+    await shot(win, '4a-connected');
+    await clickText(win, '.settings .row .btn', 'Disconnect');
+    await until(win, `document.querySelector('.settings .row .status').textContent === 'Off'`, 'connector disconnects');
     await clickText(win, '.settings .btn', 'Add a connector');
     await until(win, `document.querySelectorAll('.preset-grid .preset').length === 5`, 'connector presets');
     await shot(win, '4-connectors');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connectors.\n');
+    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets.\n');
     app.exit(0);
   } catch (error) { process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }
 });

@@ -86,6 +86,7 @@ code, pre, kbd { font-family: var(--mono); }
 .btn:hover:not(:disabled) { background: var(--hover); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn.sm { height: 26px; padding: 0 10px; font-size: 12px; border-radius: 7px; }
 .btn.lg { height: 38px; padding: 0 20px; font-size: 14px; border-radius: 10px; }
 .btn.full { width: 100%; justify-content: center; }
 .link { color: var(--accent); display: inline-flex; align-items: center; gap: 3px; font-size: 12px; }
@@ -321,12 +322,6 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 .segmented button { padding: 5px 14px; color: var(--text-2); }
 .segmented button + button { border-left: 1px solid var(--border-strong); }
 .segmented button.on { background: var(--selected); color: var(--text); font-weight: 550; }
-.switch { position: relative; width: 30px; height: 18px; flex: none; }
-.switch input { opacity: 0; position: absolute; inset: 0; margin: 0; }
-.switch i { position: absolute; inset: 0; border-radius: 9px; background: var(--border-strong); transition: background .15s; pointer-events: none; }
-.switch i::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .25); transition: transform .15s; }
-.switch input:checked + i { background: var(--accent); }
-.switch input:checked + i::after { transform: translateX(12px); }
 
 .toast { position: fixed; z-index: 60; bottom: 22px; left: 50%; transform: translateX(-50%); max-width: min(620px, 80vw); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; box-shadow: var(--pop-shadow); font-size: 13px; animation: rise .16s ease-out; white-space: pre-wrap; }
 

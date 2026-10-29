@@ -70,7 +70,7 @@ function mcpRecord(input, existing = {}) {
   const transport = input.transport === 'http' ? 'http' : 'stdio';
   if (transport === 'stdio' && !String(input.command || '').trim()) throw new Error('Enter the command that starts the server.');
   if (transport === 'http' && !/^https?:\/\//.test(String(input.url || ''))) throw new Error('Enter an http or https URL.');
-  return { id: existing.id || crypto.randomUUID(), name, transport, command: String(input.command || '').trim(), args: (input.args || []).map(a => String(a).replace(/^~(?=\/|$)/, os.homedir())), url: String(input.url || '').trim(), oauth: transport === 'http' && !!input.oauth, enabled: input.enabled ?? existing.enabled ?? true };
+  return { id: existing.id || crypto.randomUUID(), name, transport, command: String(input.command || '').trim(), args: (input.args || []).map(a => String(a).replace(/^~(?=\/|$)/, os.homedir())), url: String(input.url || '').trim(), oauth: transport === 'http' && !!input.oauth, enabled: input.enabled ?? existing.enabled ?? !(transport === 'http' && input.oauth) };
 }
 
 const handlers = {
@@ -121,9 +121,23 @@ const handlers = {
     changed(); return record.id;
   },
   'mcp:remove': async id => { await mcp.disconnect(id); store.remove('mcpServers', id); secrets.set(`mcp:${id}`, null); secrets.set(`mcp-oauth:${id}`, null); changed(); },
-  'mcp:toggle': async (id, enabled) => { store.upsert('mcpServers', { id, enabled: !!enabled }); if (!enabled) await mcp.disconnect(id); changed(); },
-  'mcp:connect': async id => { const server = store.data.mcpServers.find(s => s.id === id); await (server?.oauth ? mcp.authorize(id) : mcp.reconnect(id)); changed(); },
-  'mcp:signout': async id => { await mcp.disconnect(id); secrets.set(`mcp-oauth:${id}`, null); changed(); },
+  // Connect turns the connector on and connects; OAuth connectors open the provider's consent page.
+  'mcp:connect': async id => {
+    const server = store.data.mcpServers.find(s => s.id === id);
+    if (!server) throw new Error('Connector not found.');
+    store.upsert('mcpServers', { id, enabled: true });
+    await (server.oauth ? mcp.authorize(id) : mcp.reconnect(id));
+    changed();
+  },
+  // Disconnect turns it off; for OAuth it also deletes the saved tokens, so the next Connect asks again.
+  'mcp:disconnect': async id => {
+    const server = store.data.mcpServers.find(s => s.id === id);
+    if (!server) throw new Error('Connector not found.');
+    store.upsert('mcpServers', { id, enabled: false });
+    await mcp.disconnect(id);
+    if (server.oauth) secrets.set(`mcp-oauth:${id}`, null);
+    changed();
+  },
   'prefs:set': patch => { const allowed = ['theme', 'systemPrompt']; for (const k of allowed) if (k in patch) store.data.preferences[k] = String(patch[k]).slice(0, 20000); store.save(); if ('theme' in patch) nativeTheme.themeSource = ['light', 'dark'].includes(patch.theme) ? patch.theme : 'system'; changed(); },
   'clis:rescan': () => { for (const p of Object.values(presets)) if (p.cli) cliPath(p.cli, true); changed(); },
   skills: id => skills(id ? store.workspace(id).path : null),

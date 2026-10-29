@@ -15,6 +15,7 @@ electron/main.js
   │       ├─ catalog.js     presets for every route, access modes, settings validation
   │       ├─ cli.js         Claude Code / Codex / Gemini / Copilot CLI: argv, prompt on stdin, JSON event parsing, Claude Code control requests
   │       ├─ codex-server.js  Codex Ask first through `codex app-server` JSON-RPC
+  │       ├─ copilot-acp.js   Copilot Ask first through `copilot --acp` (Agent Client Protocol)
   │       ├─ anthropic.js   Messages API through @anthropic-ai/sdk, manual streaming tool loop
   │       ├─ openai.js      every OpenAI-compatible server through the openai SDK
   │       └─ transcript.js  neutral history → provider messages; CLI replay prompt
@@ -49,7 +50,7 @@ Before each run in a code workspace, `git.snapshot` copies the real index (with 
 
 ## Approvals
 
-`Runner.ask` is the one approval flow. API runs call it before each MCP tool call. Claude Code always runs with `--input-format stream-json --permission-prompt-tool stdio`. In **Ask first** the CLI sends each permission prompt as a `can_use_tool` control request on stdout. Hanobi answers with a `control_response` on stdin, and closes stdin after the `result` event. In the other modes Hanobi denies permission prompts, as the CLI does when nobody can answer. In **Ask first**, Codex runs `codex app-server` with `approvalPolicy: untrusted` and the workspace-write sandbox. Hanobi answers `item/commandExecution/requestApproval` and `item/fileChange/requestApproval` with `accept` or `decline`. Other server requests get a JSON-RPC error. Thread ids are the same as in `codex exec`, so a thread can change mode and still resume. **Always allow** adds the tool name to the thread's `allowedTools`.
+`Runner.ask` is the one approval flow. API runs call it before each MCP tool call. Claude Code always runs with `--input-format stream-json --permission-prompt-tool stdio`. In **Ask first** the CLI sends each permission prompt as a `can_use_tool` control request on stdout. Hanobi answers with a `control_response` on stdin, and closes stdin after the `result` event. In the other modes Hanobi denies permission prompts, as the CLI does when nobody can answer. In **Ask first**, Codex runs `codex app-server` with `approvalPolicy: untrusted` and the workspace-write sandbox. Hanobi answers `item/commandExecution/requestApproval` and `item/fileChange/requestApproval` with `accept` or `decline`. Other server requests get a JSON-RPC error. Thread ids are the same as in `codex exec`, so a thread can change mode and still resume. In **Ask first**, Copilot runs `copilot --acp` with allow-all off (Hanobi turns it off if a saved setting has it on). Hanobi declares no fs or terminal capability, so Copilot uses its own tools. Hanobi answers `session/request_permission` with the `allow_once` or `reject_once` option. A resumed thread uses `session/load`; Hanobi ignores the replayed updates. ACP session ids are the same as `--session-id`. A Deny makes Copilot end the turn ("Info: Operation cancelled by user"). Copilot sends such notices as message chunks, so Hanobi puts each one in its own paragraph. **Always allow** adds the tool name to the thread's `allowedTools`.
 
 ## Adding a provider
 

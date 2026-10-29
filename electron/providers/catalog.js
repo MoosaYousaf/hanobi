@@ -9,7 +9,7 @@ const presets = {
     models: [{ id: '', label: 'CLI default' }, { id: 'gpt-6.1-sol', label: 'GPT-6.1 Sol' }, { id: 'gpt-6-astra', label: 'GPT-6 Astra' }, { id: 'gpt-6.1-terra', label: 'GPT-6.1 Terra' }, { id: 'gpt-6-luna', label: 'GPT-6 Luna' }] },
   gemini: { kind: 'cli', cli: 'gemini', name: 'Gemini CLI', route: 'subscription', efforts: [''], note: 'Works with a Gemini API key or a Workspace account. Personal Google AI plans moved to Antigravity; use the Google Gemini API connection instead.',
     models: [{ id: '', label: 'CLI default' }, { id: 'auto', label: 'Auto' }, { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro' }, { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash' }] },
-  copilot: { kind: 'cli', cli: 'copilot', name: 'GitHub Copilot', route: 'subscription', efforts: EFFORTS, customModels: true,
+  copilot: { kind: 'cli', cli: 'copilot', name: 'GitHub Copilot', route: 'subscription', efforts: EFFORTS, customModels: true, asks: true,
     note: 'Uses your GitHub sign-in and Copilot plan. Models depend on the plan; type any model id your plan offers.',
     models: [{ id: '', label: 'CLI default' }, { id: 'auto', label: 'Auto' }] },
   anthropic: { kind: 'anthropic', name: 'Anthropic API', route: 'key', needsKey: true, efforts: EFFORTS, defaultModel: 'claude-opus-5-5', keyUrl: 'https://platform.claude.com/settings/keys' },

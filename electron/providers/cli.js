@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { replayPrompt } = require('./transcript');
 const codexServer = require('./codex-server');
+const copilotAcp = require('./copilot-acp');
 
 // Apps opened from Finder get a minimal PATH, so look where CLIs and npx are usually installed.
 function searchPath() {
@@ -123,10 +124,11 @@ function run({ preset, thread, history, prompt, cwd, chat = false, mcpServers, d
   const executable = cliPath(preset.cli);
   if (!executable) throw new Error(`${preset.name} is not installed or not on PATH.`);
   let resume = thread.replay ? null : thread.sessionId;
-  if (preset.cli === 'copilot' && !resume) { resume = crypto.randomUUID(); onSession(resume); }
   const input = thread.replay || (!thread.sessionId && history.length) ? replayPrompt(history, prompt) : prompt;
   const env = { ...process.env, PATH: searchPath().join(path.delimiter), NO_COLOR: '1', COPILOT_AUTO_UPDATE: 'false' };
   if (preset.cli === 'codex' && thread.mode === 'ask' && !chat) return codexServer.run({ executable, env, cwd, input, resume, model: thread.model, effort: thread.effort, draft, signal, onSession, approve, question });
+  if (preset.cli === 'copilot' && thread.mode === 'ask' && !chat) return copilotAcp.run({ executable, env, cwd, input, resume, model: thread.model, effort: thread.effort, draft, signal, onSession, approve });
+  if (preset.cli === 'copilot' && !resume) { resume = crypto.randomUUID(); onSession(resume); }
   const args = command(preset.cli, { ...thread, sessionId: resume, chat, mcpServers: preset.cli === 'claude' ? mcpServers : [] });
   const child = spawn(executable, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
   // Claude Code keeps stdin open for approval and question answers until the turn's result arrives.

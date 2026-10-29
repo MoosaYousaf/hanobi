@@ -6,6 +6,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { Store, migrate } = require('../electron/store');
 const { Draft } = require('../electron/draft');
+const acp = require('../electron/providers/copilot-acp');
 const cli = require('../electron/providers/cli');
 const { command, apply } = cli;
 const { toProvider, replayPrompt } = require('../electron/providers/transcript');
@@ -134,6 +135,42 @@ test('Claude Code ask mode: the prompt is a stdin message, and approval prompts 
     assert.equal(draft.parts[0].status, 'denied');
     assert.equal(draft.parts.at(-1).text, 'deny');
   } finally { process.env.HOME = savedHome; cli.cliPath('claude', true); }
+});
+
+test('Copilot ask mode: ACP permission requests become approvals; a load does not repeat old turns', async () => {
+  assert.doesNotThrow(() => validateSettings({ preset: 'copilot' }, { model: '', mode: 'ask' }));
+  const home = tmp('hanobi-home-'), bin = path.join(home, '.local/bin'), savedHome = process.env.HOME;
+  fs.mkdirSync(bin, { recursive: true });
+  fs.copyFileSync(path.join(__dirname, 'fixtures/fake-copilot.cjs'), path.join(bin, 'copilot'));
+  fs.chmodSync(path.join(bin, 'copilot'), 0o755);
+  process.env.HOME = home;
+  const turn = async (answer, sessionId) => {
+    const draft = new Draft(), asked = [], sessions = [];
+    await cli.run({ preset: presets.copilot, thread: { mode: 'ask', model: '', effort: '', sessionId }, history: [], prompt: 'write', cwd: home, mcpServers: [], draft,
+      signal: new AbortController().signal, onSession: id => sessions.push(id),
+      approve: request => { asked.push(request); assert.equal(draft.parts.find(p => p.type === 'tool').status, 'pending'); return { decision: Promise.resolve(answer), cancel() {} }; } });
+    return { draft, asked, sessions };
+  };
+  try {
+    assert.equal(cli.cliPath('copilot', true), path.join(bin, 'copilot'));
+    let { draft, asked, sessions } = await turn('allow');
+    assert.deepEqual(sessions, ['s-new']);
+    assert.deepEqual(asked.map(r => [r.callId, r.name, r.description]), [['t1', 'Edit', 'Create a.txt']]);
+    assert.deepEqual(draft.parts.map(p => [p.type, p.status ?? p.text]), [['thinking', 'plan'], ['tool', 'done'], ['text', 's-new:yes']]);
+    ({ draft, sessions } = await turn('always', 's-old'));
+    assert.deepEqual(sessions, ['s-old']);
+    assert.equal(draft.parts.at(-1).text, 's-old:yes');
+    assert.ok(!draft.parts.some(p => p.text === 'OLD'));
+    const notes = new Draft(), state = {};
+    for (const text of ['Info: a.txt', 'Done', '.']) acp.apply({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } }, notes, state);
+    assert.equal(notes.parts[0].text, 'Info: a.txt\n\nDone.');
+    ({ draft } = await turn('deny'));
+    assert.equal(draft.parts.find(p => p.type === 'tool').status, 'denied');
+    assert.equal(draft.parts.at(-1).text, 's-new:no');
+    process.env.FAKE_ALLOW_ALL = 'on';
+    ({ draft } = await turn('allow'));
+    assert.equal(draft.parts.at(-1).text, 's-new:yes');
+  } finally { delete process.env.FAKE_ALLOW_ALL; process.env.HOME = savedHome; cli.cliPath('copilot', true); }
 });
 
 test('Codex ask mode: app-server approval requests become approvals, and a decline stays declined', async () => {

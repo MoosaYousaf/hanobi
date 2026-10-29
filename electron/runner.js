@@ -128,9 +128,9 @@ class Runner {
     const user = this.store.append(threadId, { role: 'user', parts: [...images.map(i => ({ type: 'image', mediaType: i.mediaType, data: i.data, name: i.name })), ...attached, ...(text ? [{ type: 'text', text }] : [])] });
     const draft = new Draft();
     const controller = new AbortController();
-    this.runs.set(threadId, { controller, draft });
+    this.runs.set(threadId, { controller, draft, startedAt: Date.now() });
     this.send('thread-changed', { threadId });
-    this.send('run-state', { threadId, running: true });
+    this.send('run-state', { threadId, running: true, startedAt: this.runs.get(threadId).startedAt });
     this.execute({ threadId, thread, workspace, connection, preset, history, text, attached, draft, controller, userId: user.id });
   }
 
@@ -144,9 +144,10 @@ class Runner {
     const ticker = setInterval(() => { if (draft.version !== sent) { sent = draft.version; this.send('run-update', { threadId, parts: draft.parts }); } }, UPDATE_MS);
     const finish = message => {
       clearInterval(ticker);
+      const startedAt = this.runs.get(threadId)?.startedAt;
       this.runs.delete(threadId);
       for (const [id, entry] of this.approvals) if (entry.threadId === threadId) this.answer(id, null);
-      const saved = message && this.store.append(threadId, { role: 'assistant', connectionId: thread.connectionId, model: thread.model, ...(draft.suggestions.length ? { suggestions: draft.suggestions } : {}), ...(draft.usage ? { usage: { used: draft.usage.used, window: draft.usage.window || contextWindow(thread.model) } } : {}), ...message });
+      const saved = message && this.store.append(threadId, { role: 'assistant', connectionId: thread.connectionId, model: thread.model, ...(draft.suggestions.length ? { suggestions: draft.suggestions } : {}), ...(startedAt ? { duration: Date.now() - startedAt } : {}), ...(draft.usage ? { usage: { used: draft.usage.used, window: draft.usage.window || contextWindow(thread.model) } } : {}), ...message });
       this.send('thread-changed', { threadId });
       this.send('run-state', { threadId, running: false, error: message?.error });
       return saved;
@@ -277,6 +278,7 @@ class Runner {
     else entry.resolve(['allow', 'always', 'deny'].includes(decision) ? decision : 'deny');
   }
   live() { return Object.fromEntries([...this.runs].map(([id, run]) => [id, run.draft.parts])); }
+  startedAt(threadId) { return this.runs.get(threadId)?.startedAt || null; }
 }
 
 module.exports = { Runner, ASK_TOOL, WRITE_TOOL, normalizeQuestions, validAnswers };

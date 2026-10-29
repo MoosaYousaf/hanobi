@@ -9,6 +9,7 @@ let state = {
   app: null,
   threads: {}, // id -> thread with messages
   live: {}, // threadId -> streaming parts
+  started: {}, // threadId -> when the running turn started (ms)
   approvals: [], // approval requests and model questions; questions carry `questions`
   // panes: the threads shown side by side; threadId is the active pane. sizes: pane width fractions.
   ui: { view: null, workspaceId: null, threadId: null, projectId: null, panes: [], sizes: [], focus: false, panel: null, settings: null, sidebar: true },
@@ -57,7 +58,7 @@ export async function refresh() {
 export async function loadThread(id) {
   if (!id) return;
   const thread = await call('thread', id);
-  set(s => ({ threads: { ...s.threads, [id]: thread }, live: thread.live ? { ...s.live, [id]: thread.live } : s.live }));
+  set(s => ({ threads: { ...s.threads, [id]: thread }, live: thread.live ? { ...s.live, [id]: thread.live } : s.live, started: thread.startedAt ? { ...s.started, [id]: thread.startedAt } : s.started }));
 }
 export const MAX_PANES = 4;
 export const equal = n => Array.from({ length: n }, () => 1 / n);
@@ -113,8 +114,8 @@ export function start() {
   api.on('changed', () => refresh().catch(toast));
   api.on('thread-changed', ({ threadId }) => { if (state.threads[threadId] || state.ui.threadId === threadId) loadThread(threadId).catch(toast); refresh().catch(toast); });
   api.on('run-update', ({ threadId, parts }) => set(s => ({ live: { ...s.live, [threadId]: parts } })));
-  api.on('run-state', ({ threadId, running, error }) => {
-    if (running) set(s => ({ live: { ...s.live, [threadId]: s.live[threadId] || [] } }));
+  api.on('run-state', ({ threadId, running, error, startedAt }) => {
+    if (running) set(s => ({ live: { ...s.live, [threadId]: s.live[threadId] || [] }, started: { ...s.started, [threadId]: startedAt || Date.now() } }));
     // Drop the live copy only after the saved reply has loaded, so the reply never flickers out.
     else loadThread(threadId).catch(toast).finally(() => set(s => {
       const live = { ...s.live };

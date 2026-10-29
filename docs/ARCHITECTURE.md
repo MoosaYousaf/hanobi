@@ -41,7 +41,7 @@ electron/main.js
 
 ## Streaming
 
-Adapters write into a `Draft`. The runner sends the draft parts to the renderer at most every 60 ms. Only the live message component subscribes to them. When the run ends, the runner saves the final parts as one assistant message.
+Adapters write into a `Draft`. The runner sends the draft parts to the renderer at most every 60 ms. Only the live message component subscribes to them. When the run ends, the runner saves the final parts as one assistant message. `run-state` carries the run's `startedAt`, so the live status line counts the time and opens the turn's thinking and tool calls; the saved message keeps `duration` (ms).
 
 ## Workspaces
 

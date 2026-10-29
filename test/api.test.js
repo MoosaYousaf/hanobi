@@ -68,6 +68,9 @@ test('an OpenAI-compatible model calls an MCP tool after approval and the reply 
     assert.deepEqual(reply.parts.map(p => p.type), ['tool', 'text']);
     assert.equal(reply.parts[0].output, 'Note plan: ship on Friday');
     assert.equal(reply.parts[1].text, 'The note says ship on Friday.');
+    // The run start goes out with run-state, and the saved reply keeps how long the turn took.
+    assert.equal(typeof events.find(([c, v]) => c === 'run-state' && v.running)[1].startedAt, 'number');
+    assert.ok(Number.isInteger(reply.duration) && reply.duration >= 0);
     // The second request carried the tool call and its result in OpenAI format.
     assert.deepEqual(fake.requests[1].messages.slice(-2).map(m => m.role), ['assistant', 'tool']);
     assert.equal(fake.requests[0].tools[0].function.name, 'notes__read_note');

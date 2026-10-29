@@ -64,7 +64,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function until(win, script, label, timeout = 5000) {
   const end = Date.now() + timeout;
   while (Date.now() < end) { if (await win.webContents.executeJavaScript(script)) return; await sleep(100); }
-  throw new Error(`Timed out: ${label}`);
+  const detail = await win.webContents.executeJavaScript(`JSON.stringify(window.__pick || null)`).catch(() => null);
+  throw new Error(`Timed out: ${label}${detail && detail !== "null" ? ` ${detail}` : ""}`);
 }
 // Errors thrown in the page lose their message, so a missing element is reported from here.
 const click = async (win, selector) => { if (!await win.webContents.executeJavaScript(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; el.click(); return true; })()`)) throw new Error(`Missing ${selector}`); };
@@ -96,11 +97,18 @@ app.whenReady().then(async () => {
     await until(win, `/near the usage limit/.test(document.querySelector('.toast')?.textContent || '')`, 'a toast warns once near the cap');
     await win.webContents.executeJavaScript(`document.querySelector('.usage-card').style.display = 'flex'`);
     await shot(win, '1a-usage');
+    await click(win, '.composer-row [aria-label="Access mode"]');
+    await until(win, `(() => { const pop = document.querySelector('.option-pop'); if (!pop) return false; const probe = document.body.appendChild(Object.assign(document.createElement('div'), { style: 'background: var(--raised)' })); const raised = getComputedStyle(probe).backgroundColor; probe.remove(); const r = pop.getBoundingClientRect(), s = pop.querySelector('.pick-scroll'); window.__pick = { n: pop.querySelectorAll('.option-item').length, sh: s.scrollHeight, ch: s.clientHeight, top: r.top, bg: getComputedStyle(pop).backgroundColor, raised }; return window.__pick.n >= 4 && s.scrollHeight <= s.clientHeight + 1 && r.top >= 0 && window.__pick.bg === raised; })()`, 'access picker is themed and shows every mode without scrolling');
+    await shot(win, '1a-access');
+    await win.webContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
+    await click(win, '.composer-row [aria-label="Effort"]');
+    await until(win, `[...document.querySelectorAll('.option-pop .option-item')].some(b => b.textContent === 'High' && b.classList.contains('selected'))`, 'effort picker marks the current effort');
+    await win.webContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
     await win.webContents.executeJavaScript(`document.querySelector('.usage-card').style.display = ''`);
     await clickText(win, '.suggestion', 'Show the migration steps');
     await until(win, `document.querySelector('.composer textarea, textarea').value === 'Show the migration steps'`, 'a suggestion fills the composer');
     await win.webContents.executeJavaScript(`(() => { const t = document.querySelector('.composer textarea, textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, ''); t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-    win.webContents.send('run-state', { threadId: 't1', running: true });
+    win.webContents.send('run-state', { threadId: 't1', running: true, startedAt: Date.now() - 65000 });
     win.webContents.send('run-update', { threadId: 't1', parts: [text('Checking the docs connector.'), { type: 'tool', id: 'c', name: 'search', server: 'Notion', input: { query: 'release plan' }, status: 'pending' }] });
     win.webContents.send('approval', { id: 'p1', threadId: 't1', callId: 'c', server: 'Notion', tool: 'search', input: { query: 'release plan' } });
     win.webContents.send('question', { id: 'q1', threadId: 't1', callId: 'q', server: 'Claude Code', questions: [{ id: '0', header: 'Scope', question: 'Which releases should I cover?', multiSelect: false, options: [{ label: 'Only 2.x', description: 'The current major version.' }, { label: 'All releases', description: 'Includes 1.x.' }] }] });
@@ -109,6 +117,13 @@ app.whenReady().then(async () => {
     await until(win, `!document.querySelector('.question .btn.primary').disabled`, 'an option enables Send answers');
     await win.webContents.executeJavaScript(`document.querySelector('.question').scrollIntoView({ block: 'end' })`);
     await shot(win, '1b-thread');
+    // The status line counts the time and opens the background work: thinking and tool calls.
+    win.webContents.send('run-update', { threadId: 't1', parts: [{ type: 'thinking', text: 'The connector may hold the plan.' }, text('Checking the docs connector.'), { type: 'tool', id: 'c', name: 'search', server: 'Notion', input: { query: 'release plan' }, status: 'pending' }] });
+    await until(win, `/^1m 0[5-9]s$/.test(document.querySelector('.activity-time')?.textContent) && document.querySelector('.activity-head .working')?.textContent === 'Waiting for you'`, 'the status line shows the elapsed time');
+    await click(win, '.activity-head');
+    await until(win, `document.querySelector('.activity-thinking')?.textContent === 'The connector may hold the plan.' && document.querySelector('.activity-tool code')?.textContent === 'release plan'`, 'the status line opens the thinking and tool calls');
+    await win.webContents.executeJavaScript(`document.querySelector('.activity').scrollIntoView({ block: 'center' })`);
+    await shot(win, '1b-activity');
     win.webContents.send('run-state', { threadId: 't1', running: false });
     await until(win, `!document.querySelector('.approval')`, 'live reply clears');
     await click(win, '.topbar [title="Changes"]');
@@ -167,7 +182,7 @@ app.whenReady().then(async () => {
     await clickText(win, '.thread-row', 'Parse the release notes');
     await click(win, '.new-chat');
     await until(win, `!!document.querySelector('.composer textarea')`, 'composer renders');
-    await click(win, '.chip');
+    await click(win, '.chip[title="Choose a model"]');
     await until(win, `!!document.querySelector('.picker-pop .pick-route-label')`, 'model picker opens');
     await shot(win, '2-picker');
     await win.webContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
@@ -223,7 +238,7 @@ app.whenReady().then(async () => {
     await win.webContents.executeJavaScript(`(() => { const t = document.querySelector('.project .system-prompt'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, 'Write for customers.'); t.dispatchEvent(new Event('input', { bubbles: true })); t.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); t.blur(); })()`);
     await shot(win, '7-project');
     await clickText(win, '.project-head .btn', 'New chat');
-    await until(win, `![...document.querySelectorAll('.composer-row select')].some(s => s.title !== 'Effort') && !!document.querySelector('.crumb-ws') && document.querySelector('.crumb-ws').textContent === 'Launch plan'`, 'project chat opens in chat mode');
+    await until(win, `!document.querySelector('.composer-row [aria-label="Access mode"]') && !!document.querySelector('.crumb-ws') && document.querySelector('.crumb-ws').textContent === 'Launch plan'`, 'project chat opens in chat mode');
     const saved = JSON.parse(fs.readFileSync(path.join(process.env.HANOBI_USER_DATA, 'hanobi-data.json'), 'utf8'));
     await sleep(600);
     const project = JSON.parse(fs.readFileSync(path.join(process.env.HANOBI_USER_DATA, 'hanobi-data.json'), 'utf8')).workspaces.find(w => w.kind === 'project');
@@ -272,7 +287,7 @@ app.whenReady().then(async () => {
     })()`);
     await until(win, `(${JSON.stringify(listed)}).at(-1) === [...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row .thread-title')][0].textContent`, 'dragging a conversation reorders the list');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
+    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, elapsed time and background work, themed access and effort pickers, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
     app.exit(0);
   } catch (error) {
     if (errors.length) console.error('Console errors:\n' + errors.join('\n')); process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }

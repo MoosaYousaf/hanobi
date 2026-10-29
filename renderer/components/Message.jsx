@@ -1,4 +1,4 @@
-import { memo, useState, useRef, useLayoutEffect } from 'react';
+import { memo, useState, useRef, useLayoutEffect, useEffect } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChevronRight, Check, Copy, Wrench, CircleAlert, Ban, Clock, GitBranch, RotateCcw, Pencil, Download, Eye, Code, Play } from 'lucide-react';
@@ -224,7 +224,7 @@ export const Message = memo(function Message({ message, modelLabel, onBranch, on
   }
   return (
     <article className="msg assistant">
-      <div className="msg-meta">{modelLabel}{message.stopped ? ' · stopped' : ''}</div>
+      <div className="msg-meta">{modelLabel}{message.duration ? ` · ${elapsed(message.duration)}` : ''}{message.stopped ? ' · stopped' : ''}</div>
       <Parts parts={message.parts} />
       {message.error ? <div className="msg-error"><CircleAlert size={14} /> {message.error}</div> : null}
       {!message.parts.length && !message.error ? <div className="muted">No response.</div> : null}
@@ -233,9 +233,52 @@ export const Message = memo(function Message({ message, modelLabel, onBranch, on
   );
 });
 
+// Elapsed time as Claude Code shows it: 42s, 1m 05s, 1h 02m.
+export function elapsed(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+  return `${Math.floor(s / 3600)}h ${String(Math.floor(s / 60) % 60).padStart(2, '0')}m`;
+}
+
+// The live status line: what the agent does now and for how long. A click opens its background work:
+// the newest thinking and every tool call of this turn, kept scrolled to the end.
+function Activity({ parts, startedAt, waiting }) {
+  const [open, setOpen] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  const body = useRef(null);
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
+  useLayoutEffect(() => { if (open && body.current) body.current.scrollTop = body.current.scrollHeight; }, [open, parts]);
+  const steps = parts.filter(p => p.type === 'thinking' || p.type === 'tool');
+  const tool = parts.findLast(p => p.type === 'tool' && p.status === 'running');
+  const last = parts.at(-1);
+  const label = waiting ? 'Waiting for you' : tool ? `Running ${tool.name}` : last?.type === 'thinking' || !parts.length ? 'Thinking' : 'Working';
+  return (
+    <div className={`activity ${open ? 'open' : ''}`}>
+      <button className="activity-head" onClick={() => setOpen(!open)} aria-expanded={open} disabled={!steps.length} title={steps.length ? 'Show the background work' : undefined}>
+        <Working label={label} />
+        {startedAt ? <span className="activity-time">{elapsed(now - startedAt)}</span> : null}
+        {steps.length ? <ChevronRight size={13} className="chev" /> : null}
+      </button>
+      {open ? (
+        <div className="activity-body" ref={body}>
+          {steps.map((p, i) => p.type === 'thinking'
+            ? <div key={i} className="activity-thinking">{p.text}</div>
+            : <div key={p.id || i} className={`activity-tool tool-${p.status}`}>
+                <Wrench size={12} /><span className="tool-name">{p.name}</span>
+                {(() => { const v = typeof p.input === 'string' ? p.input : p.input?.command || p.input?.query || p.input?.path || p.input?.file_path || p.input?.pattern || ''; return v ? <code>{String(v).slice(0, 160)}</code> : null; })()}
+                <span className="tool-status">{p.status === 'running' ? <span className="mini-spin" /> : statusIcon[p.status]}</span>
+              </div>)}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // Only this component re-renders while tokens stream in.
 export function LiveMessage({ threadId, modelLabel }) {
   const parts = useStore(s => s.live[threadId]);
+  const startedAt = useStore(s => s.started[threadId]);
   const approvals = useStore(s => s.approvals);
   if (!parts) return null;
   const mine = approvals.filter(a => a.threadId === threadId);
@@ -244,7 +287,7 @@ export function LiveMessage({ threadId, modelLabel }) {
       <div className="msg-meta">{modelLabel}</div>
       <Parts parts={parts} live />
       {mine.map(a => (a.questions ? <Question key={a.id} request={a} /> : <Approval key={a.id} request={a} />))}
-      {!mine.length ? <Working label={parts.length ? 'Working' : 'Thinking'} /> : null}
+      <Activity parts={parts} startedAt={startedAt} waiting={mine.length > 0} />
     </article>
   );
 }

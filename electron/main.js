@@ -129,7 +129,7 @@ function projectById(id) {
 
 function threadView(id) {
   const { messages, ...thread } = store.thread(id);
-  return { ...thread, messages: messages.map(({ native, checkpoint, ...m }) => ({ ...m, ...(checkpoint ? { checkpoint: true } : {}) })), live: runner.live()[id] || null };
+  return { ...thread, messages: messages.map(({ native, checkpoint, ...m }) => ({ ...m, ...(checkpoint ? { checkpoint: true } : {}) })), live: runner.live()[id] || null, startedAt: runner.startedAt(id) };
 }
 
 function mcpRecord(input, existing = {}) {

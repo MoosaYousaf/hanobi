@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, Square, Plus, X, Mic } from 'lucide-react';
 import { useStore, getState, call, guard, toast, askConfirm } from '../store.js';
 import { startVoice, stopVoice, cancelVoice } from '../voice/voice.js';
-import { ModelPicker } from './ModelPicker.jsx';
+import { ModelPicker, OptionPicker } from './ModelPicker.jsx';
 import { formatSize } from './Files.jsx';
 import { useLimits, refreshLimits, level, leftText, resetText, WARN } from '../limits.js';
 
@@ -192,16 +192,12 @@ export function Composer({ thread, workspace, modelLabel }) {
         <button className="icon-btn tip" data-tip="Attach files" aria-label="Attach files" onClick={pick}><Plus size={16} /></button>
         <MicButton threadId={thread.id} />
         {!chatCli ? (
-          <select className={`mini-select ${mode.danger ? 'danger' : ''}`} value={mode.id} disabled={running} onChange={e => onAccess(e.target.value)} title={mode.detail}>
-            {modes.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-          </select>
+          <OptionPicker options={modes} value={mode.id} disabled={running} onPick={onAccess} title={mode.detail} danger={mode.danger} label="Access mode" />
         ) : null}
         <span className="grow" />
         <ModelPicker thread={thread} label={modelLabel} disabled={running} />
         {preset?.efforts?.length > 1 ? (
-          <select className="mini-select" value={thread.effort} disabled={running} onChange={e => setting({ effort: e.target.value })} title="Effort">
-            {preset.efforts.map(e => <option key={e} value={e}>{e ? cap(e) : 'Default effort'}</option>)}
-          </select>
+          <OptionPicker options={preset.efforts.map(e => ({ id: e, label: e ? cap(e) : 'Default effort' }))} value={thread.effort} disabled={running} onPick={effort => setting({ effort })} title="Effort" label="Effort" align="end" />
         ) : null}
         <UsageRing thread={thread} preset={preset} />
       </div>

@@ -258,6 +258,18 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 .approval-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
 .working { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-3); margin-top: 2px; }
+.activity { margin-top: 2px; }
+.activity-head { display: inline-flex; align-items: center; gap: 8px; padding: 2px 6px 2px 0; border-radius: 6px; color: var(--text-3); font-size: 12.5px; }
+.activity-head:not(:disabled):hover { color: var(--text-2); }
+.activity-head .working { margin-top: 0; }
+.activity-time { font-variant-numeric: tabular-nums; }
+.activity-head .chev { transition: transform .12s; }
+.activity.open .activity-head .chev { transform: rotate(90deg); }
+.activity-body { margin-top: 6px; max-height: 280px; overflow-y: auto; padding: 8px 10px; border-left: 2px solid var(--border); display: grid; gap: 6px; font-size: 12.5px; color: var(--text-2); }
+.activity-thinking { white-space: pre-wrap; line-height: 1.5; color: var(--text-3); }
+.activity-tool { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.activity-tool code { font-family: var(--mono); font-size: 11.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.activity-tool .tool-status { margin-left: auto; flex: none; display: inline-grid; }
 .working-spark { display: inline-grid; color: var(--accent); animation: burst 1.6s ease-in-out infinite; }
 
 /* Composer */
@@ -307,6 +319,14 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 .pick-label { font-weight: 500; }
 .pick-id { font-family: var(--mono); font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pick-check { margin-left: auto; flex: none; }
+.option-pop { width: auto; min-width: 180px; max-height: none; }
+.option-pop.wide { width: 300px; }
+.composer-row .option-pop.start { left: 0; right: auto; }
+.composer-row .option-pop.end { left: auto; right: 0; }
+.option-item { padding-left: 8px; }
+.option-text { display: grid; gap: 1px; min-width: 0; }
+.option-detail { font-size: 11.5px; line-height: 1.35; color: var(--text-3); }
+.option-item.danger .pick-label, .chip.danger { color: var(--danger); }
 .pick-note { padding: 2px 16px 6px; font-size: 12px; color: var(--text-3); }
 .pick-foot { border-top: 1px solid var(--border); height: 38px; padding: 0 14px; text-align: left; color: var(--text-2); font-size: 12.5px; border-radius: 0 0 12px 12px; }
 .pick-foot:hover { background: var(--hover); color: var(--text); }
@@ -408,7 +428,7 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 .segmented button + button { border-left: 1px solid var(--border-strong); }
 .segmented button.on { background: var(--selected); color: var(--text); font-weight: 550; }
 
-.toast { position: fixed; z-index: 60; bottom: 22px; left: 50%; transform: translateX(-50%); max-width: min(620px, 80vw); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; box-shadow: var(--pop-shadow); font-size: 13px; animation: rise .16s ease-out; white-space: pre-wrap; }
+.toast { position: fixed; z-index: 60; bottom: 22px; left: 50%; transform: translateX(-50%); max-width: min(620px, 80vw); background: var(--raised); color: var(--text); border: 1px solid var(--border-strong); padding: 10px 16px; border-radius: 10px; box-shadow: var(--pop-shadow); font-size: 13px; animation: rise .16s ease-out; white-space: pre-wrap; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 50% { opacity: .45; } }

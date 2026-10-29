@@ -7,7 +7,7 @@ export const routeIcon = { subscription: Terminal, key: KeyRound, local: HardDri
 const ORDER = ['subscription', 'key', 'local'];
 
 // Closes a popover on Escape or a click outside it.
-function useDismiss(open, close) {
+export function useDismiss(open, close) {
   const ref = useRef(null);
   useEffect(() => {
     if (!open) return;
@@ -83,6 +83,34 @@ export function ModelPicker({ thread, label, disabled }) {
             })}
           </div>
           <button className="pick-foot" onClick={() => { close(); setUi({ settings: 'models' }); }}>Add API keys or local models…</button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// A short list of choices (access mode, effort) in the same popover as the model list. Native selects use the
+// system menu, which ignores the theme and opens scrolled to the selected item.
+export function OptionPicker({ options, value, onPick, disabled, title, danger, label: name, align = 'start' }) {
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+  const ref = useDismiss(open, close);
+  const current = options.find(o => o.id === value) || options[0];
+  return (
+    <div className="picker" ref={ref}>
+      <button className={`chip ${danger ? 'danger' : ''}`} disabled={disabled} onClick={() => setOpen(!open)} title={title} aria-haspopup="listbox" aria-expanded={open} aria-label={name}>
+        <span className="chip-label">{current?.label}</span> <ChevronDown size={13} />
+      </button>
+      {open ? (
+        <div className={`popover picker-pop option-pop ${align} ${options.some(o => o.detail) ? 'wide' : ''}`} role="listbox" aria-label={name}>
+          <div className="pick-scroll">
+            {options.map(o => (
+              <button key={o.id} role="option" aria-selected={o.id === value} className={`pick-item option-item ${o.id === value ? 'selected' : ''} ${o.danger ? 'danger' : ''}`} onClick={() => { close(); if (o.id !== value) onPick(o.id); }}>
+                <span className="option-text"><span className="pick-label">{o.label}</span>{o.detail ? <span className="option-detail">{o.detail}</span> : null}</span>
+                {o.id === value ? <Check size={14} className="pick-check" /> : null}
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
     </div>

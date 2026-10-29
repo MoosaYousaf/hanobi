@@ -68,4 +68,10 @@ async function run({ thread, baseURL, history, apiKey, system, tools, callTool, 
   return { native: { format: 'openai', messages: messages.slice(start) } };
 }
 
-module.exports = { run, listModels };
+// One short non-streaming reply, used for side requests such as suggested replies.
+async function complete({ baseURL, apiKey, model, prompt, signal }) {
+  const response = await client(baseURL, apiKey).chat.completions.create({ model, messages: [{ role: 'user', content: prompt }] }, { signal });
+  return response.choices?.[0]?.message?.content || '';
+}
+
+module.exports = { run, listModels, complete };

@@ -61,4 +61,10 @@ async function run({ thread, history, apiKey, system, tools, callTool, draft, si
   return { native: { format: 'anthropic', messages: messages.slice(start) } };
 }
 
-module.exports = { run, listModels };
+// One short non-streaming reply, used for side requests such as suggested replies.
+async function complete({ apiKey, model, prompt, signal }) {
+  const message = await client(apiKey).messages.create({ model, max_tokens: 400, messages: [{ role: 'user', content: prompt }] }, { signal });
+  return message.content.filter(b => b.type === 'text').map(b => b.text).join('');
+}
+
+module.exports = { run, listModels, complete };

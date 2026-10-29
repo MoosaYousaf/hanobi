@@ -18,6 +18,8 @@ function fakeOpenAI() {
       if (req.url.endsWith('/models')) { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ object: 'list', data: [{ id: 'fake-model', object: 'model' }] })); return; }
       const request = JSON.parse(body);
       requests.push(request);
+      // A non-streaming request is the suggested-replies side request.
+      if (!request.stream) { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ id: 'y', object: 'chat.completion', choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'Here you go:\n```json\n["Ship it today", "Open the note", "Ship it today"]\n```' } }] })); return; }
       res.writeHead(200, { 'Content-Type': 'text/event-stream' });
       const chunk = delta => res.write(`data: ${JSON.stringify({ id: 'x', object: 'chat.completion.chunk', choices: [{ index: 0, ...delta }] })}\n\n`);
       if (request.messages.some(m => m.role === 'tool')) {
@@ -103,6 +105,35 @@ test('a denied tool call returns a refusal to the model', async () => {
     assert.equal(fake.requests[1].messages.at(-1).content, 'The user declined this tool call.');
   } finally {
     await mcp.closeAll();
+    fake.server.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('suggested replies: one extra request after an API reply, saved on that reply when the setting is on', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hanobi-suggest-'));
+  const fake = await fakeOpenAI();
+  const store = new Store(path.join(root, 'data.json'));
+  const secrets = memorySecrets();
+  let finished = false;
+  const suggested = new Promise(resolve => {
+    const runner = new Runner({ store, secrets, mcp: { tools: async () => [] }, send: (channel, value) => {
+      if (channel === 'run-state' && !value.running) finished = true;
+      else if (channel === 'thread-changed' && finished && store.thread(value.threadId).messages.at(-1).suggestions) resolve();
+    } });
+    store.data.connections.push({ id: 'local', preset: 'custom', name: 'Fake', baseURL: fake.url });
+    store.data.preferences.suggestReplies = true;
+    const thread = store.addThread(store.addWorkspace(root).id, { connectionId: 'local', model: 'fake-model', effort: '', mode: 'full' });
+    runner.start(thread.id, { text: 'What does the plan note say?' });
+  });
+  try {
+    await suggested;
+    const reply = store.data.threads[0].messages.at(-1);
+    assert.deepEqual(reply.suggestions, ['Ship it today', 'Open the note']);
+    const side = fake.requests.at(-1);
+    assert.equal(side.stream, undefined);
+    assert.match(side.messages[0].content, /What does the plan note say\?/);
+  } finally {
     fake.server.close();
     fs.rmSync(root, { recursive: true, force: true });
   }

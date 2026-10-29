@@ -143,6 +143,7 @@ const handlers = {
   },
   'prefs:set': patch => {
     const allowed = ['theme', 'systemPrompt']; for (const k of allowed) if (k in patch) store.data.preferences[k] = String(patch[k]).slice(0, 20000);
+    if ('suggestReplies' in patch) store.data.preferences.suggestReplies = !!patch.suggestReplies;
     if ('palette' in patch) store.data.preferences.palette = PALETTES.includes(patch.palette) ? patch.palette : 'hanobi';
     if ('accent' in patch && /^#[0-9a-f]{6}$/i.test(patch.accent)) store.data.preferences.accent = patch.accent.toLowerCase();
     store.save(); if ('theme' in patch) nativeTheme.themeSource = ['light', 'dark'].includes(patch.theme) ? patch.theme : 'system'; changed(); },

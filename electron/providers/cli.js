@@ -36,7 +36,7 @@ function command(cli, { sessionId, model = '', effort = '', mode = 'auto', mcpSe
   if (cli === 'claude') {
     // ask: the prompt goes to stdin as a stream-json message, and permission prompts come back as control requests.
     const permission = { ask: ['--input-format', 'stream-json', '--permission-prompt-tool', 'stdio'], default: [], read: ['--permission-mode', 'plan'], auto: ['--permission-mode', 'acceptEdits'], full: ['--permission-mode', 'bypassPermissions'] }[mode];
-    return ['-p', '--output-format', 'stream-json', '--include-partial-messages', '--verbose', ...permission, ...modelArgs, ...(effort ? ['--effort', effort] : []), ...(sessionId ? ['--resume', sessionId] : []), ...claudeMcpConfig(mcpServers)];
+    return ['-p', '--output-format', 'stream-json', '--include-partial-messages', '--verbose', '--prompt-suggestions', ...permission, ...modelArgs, ...(effort ? ['--effort', effort] : []), ...(sessionId ? ['--resume', sessionId] : []), ...claudeMcpConfig(mcpServers)];
   }
   if (cli === 'codex') {
     const access = { default: [], read: ['--sandbox', 'read-only', '-c', 'approval_policy="never"'], auto: ['--sandbox', 'workspace-write', '-c', 'approval_policy="never"'], full: ['--dangerously-bypass-approvals-and-sandbox'] }[mode];
@@ -60,6 +60,7 @@ const asText = value => (typeof value === 'string' ? value : Array.isArray(value
 function apply(cli, event, draft) {
   if (cli === 'claude') {
     if (event.type === 'system' && event.subtype === 'init') return event.session_id;
+    if (event.type === 'prompt_suggestion' && event.suggestion) draft.suggestions = [...new Set([...draft.suggestions, event.suggestion.trim()])];
     if (event.type === 'stream_event') {
       const e = event.event;
       if (e?.type === 'content_block_start' && e.content_block?.type === 'text' && draft.last('text')) draft.parts.push({ type: 'text', text: '' });

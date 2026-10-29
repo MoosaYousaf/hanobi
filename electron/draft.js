@@ -5,6 +5,7 @@ class Draft {
     this.parts = [];
     this.version = 0;
     this.streamed = new Set(); // message ids whose text already arrived as deltas
+    this.suggestions = []; // replies the user could send next, when the provider makes them
   }
   last(type) { const part = this.parts.at(-1); return part?.type === type ? part : null; }
   // append=false replaces the current block of that type (used for CLIs that resend whole messages).

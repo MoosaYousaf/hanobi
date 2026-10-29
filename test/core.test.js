@@ -103,6 +103,9 @@ test('Claude Code stream: deltas, tool calls, and tool results', () => {
   apply('claude', { type: 'result', result: 'Looking', session_id: 'abc' }, draft);
   assert.deepEqual(draft.final(), [{ type: 'text', text: 'Looking' }, { type: 'tool', id: 't1', name: 'Bash', server: undefined, input: { command: 'ls' }, output: 'a.txt', status: 'done' }]);
   assert.throws(() => apply('claude', { type: 'result', is_error: true, result: 'Credit balance too low' }, new Draft()), /Credit balance/);
+  apply('claude', { type: 'prompt_suggestion', suggestion: 'Run the tests ', session_id: 'abc' }, draft);
+  assert.deepEqual(draft.suggestions, ['Run the tests']);
+  assert.ok(command('claude', { mode: 'auto' }).includes('--prompt-suggestions'));
 });
 
 test('Claude Code ask mode: the prompt is a stdin message, and approval prompts come back as control requests', async () => {

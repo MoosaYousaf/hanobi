@@ -5,6 +5,7 @@ const { Draft } = require('./draft');
 const cli = require('./providers/cli');
 const anthropic = require('./providers/anthropic');
 const git = require('./git');
+const suggest = require('./suggest');
 const openai = require('./providers/openai');
 
 const UPDATE_MS = 60;
@@ -94,9 +95,10 @@ class Runner {
       clearInterval(ticker);
       this.runs.delete(threadId);
       for (const [id, entry] of this.approvals) if (entry.threadId === threadId) this.answer(id, 'deny');
-      if (message) this.store.append(threadId, { role: 'assistant', connectionId: thread.connectionId, model: thread.model, ...message });
+      const saved = message && this.store.append(threadId, { role: 'assistant', connectionId: thread.connectionId, model: thread.model, ...(draft.suggestions.length ? { suggestions: draft.suggestions } : {}), ...message });
       this.send('thread-changed', { threadId });
       this.send('run-state', { threadId, running: false, error: message?.error });
+      return saved;
     };
 
     try {
@@ -112,13 +114,26 @@ class Runner {
         result = preset.kind === 'anthropic' ? await anthropic.run(api) : await openai.run({ ...api, baseURL: connection.baseURL || preset.baseURL });
       }
       const stopped = controller.signal.aborted;
-      finish(stopped && !draft.parts.length ? null : { parts: draft.final(), native: result?.native, ...(stopped ? { stopped: true } : {}) });
+      const saved = finish(stopped && !draft.parts.length ? null : { parts: draft.final(), native: result?.native, ...(stopped ? { stopped: true } : {}) });
+      if (saved && !stopped && preset.kind !== 'cli' && this.store.data.preferences.suggestReplies) this.suggestReplies(threadId, connection, preset, saved).catch(() => {});
     } catch (error) {
       // A user stop is not a failure: keep whatever arrived and mark it stopped.
       if (controller.signal.aborted) finish(draft.parts.length ? { parts: draft.final(), stopped: true } : null);
       else finish({ parts: draft.final(), error: error.message || String(error) });
     }
   }
+  // One extra request to the same model. A failure only means no suggestions.
+  async suggestReplies(threadId, connection, preset, reply) {
+    const thread = this.store.thread(threadId);
+    const user = thread.messages.findLast(m => m.role === 'user');
+    const request = { apiKey: this.secrets.get(`key:${connection.id}`), model: thread.model, prompt: suggest.prompt(user, reply), signal: AbortSignal.timeout(30000) };
+    const text = preset.kind === 'anthropic' ? await anthropic.complete(request) : await openai.complete({ ...request, baseURL: connection.baseURL || preset.baseURL });
+    const suggestions = suggest.parse(text);
+    if (!suggestions.length || this.store.thread(threadId).messages.at(-1)?.id !== reply.id) return;
+    this.store.patchMessage(threadId, reply.id, { suggestions });
+    this.send('thread-changed', { threadId });
+  }
+
   // Rewinds to just before a user message: the conversation, the files, or both. Returns the message text for the composer.
   // The CLI session continued past that point, so the next turn starts a new session from the transcript.
   async rewind(threadId, messageId, { conversation = true, code = false } = {}) {

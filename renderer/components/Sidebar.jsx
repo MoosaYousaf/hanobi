@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { Plus, FolderPlus, Settings as SettingsIcon, PanelLeftClose, FolderOpen, X } from 'lucide-react';
+import { Plus, Settings as SettingsIcon, PanelLeftClose, FolderOpen, X } from 'lucide-react';
 import { useStore, setUi, openThread, newThread, call, guard } from '../store.js';
 import { Spark } from './Spark.jsx';
 
@@ -57,11 +57,11 @@ export function Sidebar() {
       </div>
       <div className="brand"><Spark size={18} /><span>Hanobi</span></div>
       <button className="new-chat" onClick={guard(() => newThread())}><Plus size={15} /> New conversation <kbd>⌘N</kbd></button>
+      <button className="side-action" onClick={guard(async () => { const w = await call('workspace:choose'); if (w) setUi({ workspaceId: w.id }); })}><Plus size={15} /> New Workspace</button>
       <nav className="ws-list">
         {workspaces.map(w => <Workspace key={w.id} workspace={w} threads={sorted.filter(t => t.workspaceId === w.id)} />)}
       </nav>
       <div className="sidebar-foot">
-        <button className="foot-btn" onClick={guard(async () => { const w = await call('workspace:choose'); if (w) setUi({ workspaceId: w.id }); })}><FolderPlus size={15} /> Add project folder</button>
         <button className="foot-btn" onClick={() => setUi({ settings: 'models' })}>
           <SettingsIcon size={15} /> Settings
           <span className="foot-meta">{ready} model {ready === 1 ? 'source' : 'sources'}</span>

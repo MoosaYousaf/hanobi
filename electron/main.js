@@ -8,6 +8,8 @@ const { Secrets } = require('./secrets');
 const { Mcp } = require('./mcp');
 const { Runner } = require('./runner');
 const { presets, modes } = require('./providers/catalog');
+
+const PALETTES = ['hanobi', 'gemini', 'chatgpt', 'deepseek', 'custom'];
 const { cliPath } = require('./providers/cli');
 const git = require('./git');
 const { skills } = require('./skills');
@@ -138,7 +140,11 @@ const handlers = {
     if (server.oauth) secrets.set(`mcp-oauth:${id}`, null);
     changed();
   },
-  'prefs:set': patch => { const allowed = ['theme', 'systemPrompt']; for (const k of allowed) if (k in patch) store.data.preferences[k] = String(patch[k]).slice(0, 20000); store.save(); if ('theme' in patch) nativeTheme.themeSource = ['light', 'dark'].includes(patch.theme) ? patch.theme : 'system'; changed(); },
+  'prefs:set': patch => {
+    const allowed = ['theme', 'systemPrompt']; for (const k of allowed) if (k in patch) store.data.preferences[k] = String(patch[k]).slice(0, 20000);
+    if ('palette' in patch) store.data.preferences.palette = PALETTES.includes(patch.palette) ? patch.palette : 'hanobi';
+    if ('accent' in patch && /^#[0-9a-f]{6}$/i.test(patch.accent)) store.data.preferences.accent = patch.accent.toLowerCase();
+    store.save(); if ('theme' in patch) nativeTheme.themeSource = ['light', 'dark'].includes(patch.theme) ? patch.theme : 'system'; changed(); },
   'clis:rescan': () => { for (const p of Object.values(presets)) if (p.cli) cliPath(p.cli, true); changed(); },
   skills: id => skills(id ? store.workspace(id).path : null),
   'git:status': id => git.status(store.workspace(id).path),

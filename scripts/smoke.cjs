@@ -79,8 +79,14 @@ app.whenReady().then(async () => {
     await clickText(win, '.settings .btn', 'Add a connector');
     await until(win, `document.querySelectorAll('.preset-grid .preset').length === 5`, 'connector presets');
     await shot(win, '4-connectors');
+    await clickText(win, '.settings-nav button', 'General');
+    await clickText(win, '.palette', 'Gemini style');
+    await until(win, `document.documentElement.dataset.palette === 'gemini' && getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() !== ''`, 'palette applies');
+    await shot(win, '5-theme');
+    await clickText(win, '.palette', 'Hanobi');
+    await until(win, `document.documentElement.dataset.palette === 'hanobi'`, 'palette resets');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets.\n');
+    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes.\n');
     app.exit(0);
   } catch (error) { process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }
 });

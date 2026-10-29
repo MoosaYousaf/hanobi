@@ -3,7 +3,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const VERSION = 2;
-const empty = () => ({ version: VERSION, workspaces: [], threads: [], connections: [], mcpServers: [], modelCache: {}, preferences: { theme: 'system', systemPrompt: '', lastModel: null } });
+const empty = () => ({ version: VERSION, workspaces: [], threads: [], connections: [], mcpServers: [], modelCache: {}, preferences: { theme: 'system', palette: 'hanobi', accent: '#e0532c', systemPrompt: '', lastModel: null } });
 
 // Converts the Orbit Code v1 file: provider-keyed threads become connection-keyed threads.
 function migrate(loaded) {

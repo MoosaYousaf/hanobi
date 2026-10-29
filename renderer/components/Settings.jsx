@@ -200,6 +200,14 @@ function ConnectorsPane() {
   );
 }
 
+const palettes = [
+  { id: 'hanobi', label: 'Hanobi', color: '#e0532c' },
+  { id: 'gemini', label: 'Gemini style', color: '#1a73e8' },
+  { id: 'chatgpt', label: 'ChatGPT style', color: '#10a37f' },
+  { id: 'deepseek', label: 'DeepSeek style', color: '#4d6bfe' },
+  { id: 'custom', label: 'Custom' }
+];
+
 function GeneralPane() {
   const prefs = useStore(s => s.app.preferences);
   const [system, setSystem] = useState(prefs.systemPrompt);
@@ -211,6 +219,15 @@ function GeneralPane() {
       <div className="segmented">
         {['system', 'light', 'dark'].map(t => <button key={t} className={prefs.theme === t ? 'on' : ''} onClick={() => setPref({ theme: t })}>{t[0].toUpperCase() + t.slice(1)}</button>)}
       </div>
+      <h3>Theme</h3>
+      <div className="palettes">
+        {palettes.map(p => (
+          <button key={p.id} className={`palette ${(prefs.palette || 'hanobi') === p.id ? 'on' : ''}`} onClick={() => setPref({ palette: p.id })}>
+            <span className="palette-swatch" style={{ background: p.id === 'custom' ? prefs.accent : p.color }} />{p.label}
+          </button>
+        ))}
+      </div>
+      {prefs.palette === 'custom' ? <label className="palette-custom">Accent color <input type="color" value={prefs.accent || '#e0532c'} onChange={e => setPref({ accent: e.target.value })} /></label> : null}
       <h3>Instructions for API and local models</h3>
       <textarea className="system-prompt" rows={6} value={system} onChange={e => setSystem(e.target.value)} onBlur={() => system !== prefs.systemPrompt && setPref({ systemPrompt: system })} placeholder="For example: Answer briefly. Use metric units." />
       <p className="hint">CLI agents use their own instructions, such as CLAUDE.md or AGENTS.md.</p>

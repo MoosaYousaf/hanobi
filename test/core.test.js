@@ -62,7 +62,8 @@ test('CLI prompts never enter argv, so a prompt cannot act as an option', () => 
 test('GitHub Copilot: chosen session id, streamed text, reasoning, and tool results', () => {
   const args = command('copilot', { sessionId: 'abc', model: 'auto', effort: 'low', mode: 'read' });
   assert.deepEqual(args.slice(-2), ['--session-id', 'abc']);
-  assert.ok(args.includes('--deny-tool=write') && args.includes('--reasoning-effort'));
+  assert.ok(args.includes('--deny-tool=write') && !args.includes('--reasoning-effort'));
+  assert.ok(command('copilot', { sessionId: 'abc', model: 'gpt-5.5', effort: 'low' }).includes('--reasoning-effort'));
   const draft = new Draft();
   const events = [
     { type: 'assistant.reasoning_delta', data: { deltaContent: 'Count files.' }, ephemeral: true },

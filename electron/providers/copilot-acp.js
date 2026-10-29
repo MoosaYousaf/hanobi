@@ -39,8 +39,11 @@ function choose(options, answer) {
   return option ? { outcome: 'selected', optionId: option.optionId } : { outcome: 'cancelled' };
 }
 
+// The CLI default model is "auto", and auto rejects --reasoning-effort. Effort applies only to a named model.
+const effortArgs = (model, effort) => effort && model && model !== 'auto' ? ['--reasoning-effort', effort] : [];
+
 function run({ executable, env, cwd, input, resume, model, effort, draft, signal, onSession, approve }) {
-  const args = ['--acp', '--disable-client-telemetry', ...(model ? ['--model', model] : []), ...(effort ? ['--reasoning-effort', effort] : [])];
+  const args = ['--acp', '--disable-client-telemetry', ...(model ? ['--model', model] : []), ...effortArgs(model, effort)];
   const child = spawn(executable, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdin.on('error', () => {});
   const write = message => { if (child.stdin.writable) child.stdin.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\n'); };
@@ -135,4 +138,4 @@ function run({ executable, env, cwd, input, resume, model, effort, draft, signal
   });
 }
 
-module.exports = { apply, choose, run };
+module.exports = { effortArgs, apply, choose, run };

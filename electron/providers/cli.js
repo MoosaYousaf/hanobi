@@ -54,7 +54,7 @@ function command(cli, { sessionId, model = '', effort = '', mode = 'auto', chat 
   if (cli === 'copilot') {
     const access = { default: [], read: ['--deny-tool=write', '--deny-tool=shell'], auto: ['--allow-tool=write'], full: ['--allow-all'] }[mode];
     // Copilot accepts a caller-chosen session id, so a new session can be resumed by that same id later.
-    return ['--output-format', 'json', '--no-ask-user', '--disable-client-telemetry', ...access, ...modelArgs, ...(effort ? ['--reasoning-effort', effort] : []), '--session-id', sessionId];
+    return ['--output-format', 'json', '--no-ask-user', '--disable-client-telemetry', ...access, ...modelArgs, ...copilotAcp.effortArgs(model, effort), '--session-id', sessionId];
   }
   throw new Error('Unknown CLI.');
 }

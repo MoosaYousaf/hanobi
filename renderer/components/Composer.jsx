@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, Square, Paperclip, X, Folder } from 'lucide-react';
-import { useStore, call, guard, toast } from '../store.js';
+import { useStore, call, guard, toast, askConfirm } from '../store.js';
 import { ModelPicker } from './ModelPicker.jsx';
 
 const MAX_IMAGE = 5 * 1024 * 1024;
@@ -50,8 +50,8 @@ export function Composer({ thread, workspace, modelLabel }) {
     update(''); setImages([]);
   });
   const setting = patch => guard(() => call('thread:settings', thread.id, patch))();
-  const onAccess = id => {
-    if (id === 'full' && !confirm(isCli ? 'Full access lets the agent run any tool without approval, including outside this folder. Turn it on for this conversation?' : 'Connected tools will run without asking. Turn this on for this conversation?')) return;
+  const onAccess = async id => {
+    if (id === 'full' && !await askConfirm({ title: isCli ? 'Turn on full access?' : 'Allow tools without asking?', message: isCli ? 'The agent can run any tool without approval in this conversation, including outside this folder.' : 'Connected tools run without asking in this conversation.', confirmLabel: 'Turn on', danger: true })) return;
     setting({ mode: id });
   };
 

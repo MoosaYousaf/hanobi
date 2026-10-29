@@ -1,7 +1,6 @@
 import { memo, useState } from 'react';
 import { Plus, Settings as SettingsIcon, PanelLeftClose, FolderOpen, X, MessageSquare, Code2 } from 'lucide-react';
-import { useStore, setUi, openThread, newThread, call, guard, askText } from '../store.js';
-import { Spark } from './Spark.jsx';
+import { useStore, setUi, openThread, newThread, call, guard, askText, askConfirm } from '../store.js';
 
 const LIMIT = 8;
 const ago = at => {
@@ -27,7 +26,7 @@ function Workspace({ workspace, threads }) {
   const activeId = useStore(s => s.ui.threadId);
   const running = useStore(s => s.app.running);
   const shown = all ? threads : threads.slice(0, LIMIT);
-  const remove = guard(async () => { if (confirm(`Remove “${workspace.name}” and its ${threads.length} conversations from Hanobi? Files on disk stay.`)) await call('workspace:remove', workspace.id); });
+  const remove = guard(async () => { if (await askConfirm({ title: `Remove “${workspace.name}”?`, message: `Its ${threads.length} conversations are removed from Hanobi. The files on disk stay.`, confirmLabel: 'Remove', danger: true })) await call('workspace:remove', workspace.id); });
   return (
     <section className="ws">
       <div className="ws-head">
@@ -53,9 +52,7 @@ const inView = (workspace, view) => (view === 'chat') === (workspace.kind !== 'c
 export function Sidebar() {
   const workspaces = useStore(s => s.app.workspaces);
   const threads = useStore(s => s.app.threads);
-  const connections = useStore(s => s.app.connections);
   const view = useStore(s => s.ui.view);
-  const ready = connections.filter(c => c.ready).length;
   const sorted = threads.toSorted((a, b) => b.updatedAt - a.updatedAt);
   const shown = workspaces.filter(w => inView(w, view)).toSorted((a, b) => (a.kind === 'chats') - (b.kind === 'chats'));
   const chats = workspaces.find(w => w.kind === 'chats');
@@ -71,7 +68,6 @@ export function Sidebar() {
       <div className="sidebar-top drag">
         <button className="icon-btn no-drag" title="Hide sidebar (⌘\)" onClick={() => setUi({ sidebar: false })}><PanelLeftClose size={16} /></button>
       </div>
-      <div className="brand"><Spark size={18} /><span>Hanobi</span></div>
       <div className="segmented view-switch" role="tablist">
         <button role="tab" aria-selected={view === 'chat'} className={view === 'chat' ? 'on' : ''} onClick={() => switchView('chat')}><MessageSquare size={14} /> Chat</button>
         <button role="tab" aria-selected={view === 'code'} className={view === 'code' ? 'on' : ''} onClick={() => switchView('code')}><Code2 size={14} /> Code</button>
@@ -90,7 +86,6 @@ export function Sidebar() {
       <div className="sidebar-foot">
         <button className="foot-btn" onClick={() => setUi({ settings: 'models' })}>
           <SettingsIcon size={15} /> Settings
-          <span className="foot-meta">{ready} model {ready === 1 ? 'source' : 'sources'}</span>
         </button>
       </div>
     </aside>

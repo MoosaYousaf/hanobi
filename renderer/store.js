@@ -12,7 +12,7 @@ let state = {
   approvals: [], // approval requests and model questions; questions carry `questions`
   ui: { view: null, workspaceId: null, threadId: null, projectId: null, panel: null, settings: null, sidebar: true },
   toast: null,
-  textDialog: null // { title, value, resolve }
+  dialog: null // { kind: 'text' | 'confirm', title, message, value, confirmLabel, danger, resolve }
 };
 const listeners = new Set();
 const emit = () => listeners.forEach(l => l());
@@ -108,11 +108,17 @@ export async function answerQuestion(id, answers) {
   await call('run:answer', id, answers);
 }
 
-// Electron has no window.prompt, so text input goes through this dialog. Resolves to the text, or null on cancel.
-export function askText(title, value = '') {
-  return new Promise(resolve => set({ textDialog: { title, value, resolve } }));
+// In-app dialogs. Electron has no window.prompt, and the native confirm sheet does not match the app.
+// askText resolves to the text or null; askConfirm resolves to true or false.
+export const askText = (title, value = '') => new Promise(resolve => set({ dialog: { kind: 'text', title, value, resolve } }));
+export const askConfirm = ({ title, message = '', confirmLabel = 'OK', danger = false }) => new Promise(resolve => set({ dialog: { kind: 'confirm', title, message, confirmLabel, danger, resolve } }));
+export function closeDialog(result) {
+  state.dialog?.resolve(result);
+  set({ dialog: null });
 }
-export function closeTextDialog(result) {
-  state.textDialog?.resolve(result);
-  set({ textDialog: null });
+
+export async function deleteThread(thread) {
+  if (!await askConfirm({ title: `Delete “${thread.title}”?`, message: 'The conversation is deleted from Hanobi. You cannot undo this.', confirmLabel: 'Delete', danger: true })) return;
+  await call('thread:delete', thread.id);
+  set(s => ({ ui: { ...s.ui, threadId: s.ui.threadId === thread.id ? null : s.ui.threadId } }));
 }

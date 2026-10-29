@@ -96,7 +96,8 @@ app.whenReady().then(async () => {
     await click(win, '.settings-close');
     await clickText(win, '.thread-row', 'Parse the release notes');
     await until(win, `document.querySelectorAll('.msg').length === 2`, 'thread reopens');
-    await clickText(win, '.msg-action', 'Rewind');
+    await until(win, `['Copy', 'Edit', 'Rewind', 'Branch'].every(t => document.querySelector('.msg.user [data-tip="' + t + '"]'))`, 'user message actions');
+    await click(win, '.msg.user [data-tip="Rewind"]');
     await until(win, `!!document.querySelector('.rewind-menu') && document.querySelector('.rewind-note')?.textContent.includes('Git')`, 'rewind menu opens');
     await shot(win, '6-rewind');
     await clickText(win, '.rewind-menu button', 'Rewind conversation');
@@ -104,9 +105,9 @@ app.whenReady().then(async () => {
     await clickText(win, '.view-switch button', 'Chat');
     await until(win, `[...document.querySelectorAll('.ws-name')].some(e => e.textContent === 'Chats') && document.querySelector('.new-chat').textContent.includes('New chat')`, 'chat view lists Chats');
     await clickText(win, '.side-action', 'New Project');
-    await until(win, `!!document.querySelector('.text-dialog input')`, 'project name dialog opens');
-    await win.webContents.executeJavaScript(`(() => { const i = document.querySelector('.text-dialog input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'Launch plan'); i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-    await click(win, '.text-dialog .btn.primary');
+    await until(win, `!!document.querySelector('.dialog input')`, 'project name dialog opens');
+    await win.webContents.executeJavaScript(`(() => { const i = document.querySelector('.dialog input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'Launch plan'); i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await click(win, '.dialog .btn.primary');
     await until(win, `document.querySelector('.project-head h1')?.textContent === 'Launch plan'`, 'project page opens');
     await win.webContents.executeJavaScript(`(() => { const t = document.querySelector('.project .system-prompt'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, 'Write for customers.'); t.dispatchEvent(new Event('input', { bubbles: true })); t.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); t.blur(); })()`);
     await shot(win, '7-project');

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X, Plus, RefreshCw, Trash2, ExternalLink, Plug, Cpu, SlidersHorizontal, Pencil } from 'lucide-react';
-import { useStore, setUi, call, guard, toast } from '../store.js';
+import { useStore, setUi, call, guard, toast, askConfirm } from '../store.js';
 import { routeIcon } from './ModelPicker.jsx';
 import { routeLabel } from '../labels.js';
 
@@ -82,7 +82,7 @@ function ModelsPane() {
               <Status ok={c.ready}>{c.ready ? routeLabel[c.route] : 'Needs key'}</Status>
               <button className="icon-btn sm" title="Reload models" onClick={guard(async () => { const m = await call('models:refresh', c.id); toast(`${c.name}: ${m.length} models.`); })}><RefreshCw size={13} /></button>
               <button className="icon-btn sm" title="Edit" onClick={() => setEditing({ ...c, apiKey: '' })}><Pencil size={13} /></button>
-              <button className="icon-btn sm" title="Remove" onClick={guard(async () => { if (confirm(`Remove ${c.name} and its saved key?`)) await call('connection:remove', c.id); })}><Trash2 size={13} /></button>
+              <button className="icon-btn sm" title="Remove" onClick={guard(async () => { if (await askConfirm({ title: `Remove ${c.name}?`, message: 'Its saved API key is deleted too.', confirmLabel: 'Remove', danger: true })) await call('connection:remove', c.id); })}><Trash2 size={13} /></button>
             </li>
           );
         })}
@@ -189,7 +189,7 @@ function ConnectorsPane() {
                 <button className="btn sm primary" disabled={busy} onClick={guard(() => call('mcp:connect', s.id))} title={s.oauth ? 'Opens the provider’s page in your browser to approve access' : 'Start the connector and load its tools'}>Connect</button>
               )}
               <button className="icon-btn sm" title="Edit" onClick={() => setEditing(s)}><Pencil size={13} /></button>
-              <button className="icon-btn sm" title="Remove" onClick={guard(async () => { if (confirm(`Remove ${s.name}?`)) await call('mcp:remove', s.id); })}><Trash2 size={13} /></button>
+              <button className="icon-btn sm" title="Remove" onClick={guard(async () => { if (await askConfirm({ title: `Remove ${s.name}?`, message: 'Its saved settings and sign-in are deleted.', confirmLabel: 'Remove', danger: true })) await call('mcp:remove', s.id); })}><Trash2 size={13} /></button>
             </li>
           );
         })}

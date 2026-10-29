@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { PanelLeftOpen, GitCompare, Sparkles, Trash2, Pencil, FolderOpen } from 'lucide-react';
-import { useStore, setUi, loadThread, openThread, newThread, call, guard, toast, askText } from '../store.js';
+import { useStore, setUi, loadThread, openThread, newThread, call, guard, toast, askText, askConfirm, deleteThread } from '../store.js';
 import { modelLabel } from '../labels.js';
 import { Message, LiveMessage } from './Message.jsx';
 import { Composer, setDraft } from './Composer.jsx';
@@ -13,7 +13,7 @@ function Header({ thread, workspace }) {
   const panel = useStore(s => s.ui.panel);
   const running = useStore(s => !!s.live[thread.id]);
   const rename = guard(async () => { const title = await askText('Conversation name', thread.title); if (title !== null) await call('thread:rename', thread.id, title); });
-  const remove = guard(async () => { if (confirm(`Delete “${thread.title}”?`)) { await call('thread:delete', thread.id); setUi({ threadId: null }); } });
+  const remove = guard(() => deleteThread(thread));
   const toggle = name => setUi({ panel: panel === name ? null : name });
   return (
     <header className="topbar drag">
@@ -65,10 +65,17 @@ export function ThreadView({ threadId }) {
     await openThread(id);
   });
   const rewind = guard(async (message, options) => {
-    if (options.code && !confirm('Return the workspace files to how they were before this message? Changes made after it, including your own, are lost. Ignored files stay.')) return;
+    if (options.code && !await askConfirm({ title: 'Restore the workspace files?', message: 'The files return to how they were before this message. Changes made after it, including your own, are lost. Ignored files stay.', confirmLabel: 'Restore files', danger: true })) return;
     const { text, files } = await call('thread:rewind', thread.id, message.id, options);
     if (options.conversation) setDraft(thread.id, text);
     if (files) toast(`Restored ${files.restored.length} and removed ${files.removed.length} files.`);
+  });
+  // Edit = rewind the conversation to before the message, then send the new text with the original images.
+  const edit = guard(async (message, text) => {
+    await call('thread:rewind', thread.id, message.id, { conversation: true });
+    const images = message.parts.filter(p => p.type === 'image').map(({ mediaType, data, name }) => ({ mediaType, data, name }));
+    setDraft(thread.id, '');
+    await call('run:send', thread.id, { text, images });
   });
   const messages = thread.messages.slice(-count);
   return (
@@ -84,7 +91,7 @@ export function ThreadView({ threadId }) {
               <p>{currentLabel} in <strong>{workspace.name}</strong>. Switch models below at any time, even mid-conversation.</p>
             </div>
           ) : null}
-          {messages.map(m => <Message key={m.id} message={m} modelLabel={m.role === 'assistant' ? modelLabel(app, m.connectionId || thread.connectionId, m.model ?? thread.model) : ''} onBranch={branch} onRewind={rewind} />)}
+          {messages.map(m => <Message key={m.id} message={m} modelLabel={m.role === 'assistant' ? modelLabel(app, m.connectionId || thread.connectionId, m.model ?? thread.model) : ''} onBranch={branch} onRewind={rewind} onEdit={edit} busy={running} />)}
           {running ? <LiveMessage threadId={threadId} modelLabel={currentLabel} /> : <Suggestions thread={thread} />}
         </div>
       </div>

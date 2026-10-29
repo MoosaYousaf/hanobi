@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PanelLeftOpen, Plus, FileText, X, Trash2, Pencil, Upload } from 'lucide-react';
-import { useStore, setUi, openThread, newThread, call, guard, askText } from '../store.js';
+import { useStore, setUi, openThread, newThread, call, guard, askText, askConfirm } from '../store.js';
 
 const size = bytes => (bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(0)} KB` : `${(bytes / 1048576).toFixed(1)} MB`);
 
@@ -18,7 +18,7 @@ export function ProjectView({ projectId }) {
   const save = guard(() => instructions !== project.instructions && call('project:update', projectId, { instructions }));
   const rename = guard(async () => { const name = await askText('Project name', project.name); if (name !== null) await call('project:update', projectId, { name }); });
   const remove = guard(async () => {
-    if (!confirm(`Delete the project “${project.name}”, its ${chats.length} chats, and its ${files.length} documents? This cannot be undone.`)) return;
+    if (!await askConfirm({ title: `Delete “${project.name}”?`, message: `Its ${chats.length} chats and ${files.length} documents are deleted. You cannot undo this.`, confirmLabel: 'Delete project', danger: true })) return;
     await call('workspace:remove', projectId);
     setUi({ projectId: null });
   });

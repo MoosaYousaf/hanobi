@@ -4,7 +4,7 @@ import { Sidebar } from './components/Sidebar.jsx';
 import { ThreadView, Home } from './components/ThreadView.jsx';
 import { SidePanel } from './components/SidePanel.jsx';
 import { ProjectView } from './components/ProjectView.jsx';
-import { TextDialog } from './components/TextDialog.jsx';
+import { Dialog } from './components/Dialog.jsx';
 
 // Settings is opened rarely, so it loads on first use.
 const Settings = lazy(() => import('./components/Settings.jsx'));
@@ -39,7 +39,7 @@ export function App() {
       <main className="main">{threadId ? <ThreadView key={threadId} threadId={threadId} /> : projectId ? <ProjectView key={projectId} projectId={projectId} /> : <Home />}</main>
       {panel ? <SidePanel /> : null}
       {settings ? <Suspense fallback={null}><Settings /></Suspense> : null}
-      <TextDialog />
+      <Dialog />
       {toast ? <div className="toast" role="status">{toast}</div> : null}
     </div>
   );

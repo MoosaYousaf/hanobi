@@ -1,7 +1,7 @@
 import { memo, useState, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ChevronRight, Check, Copy, Wrench, CircleAlert, Ban, Clock, GitBranch, RotateCcw } from 'lucide-react';
+import { ChevronRight, Check, Copy, Wrench, CircleAlert, Ban, Clock, GitBranch, RotateCcw, Pencil } from 'lucide-react';
 import { Working } from './Spark.jsx';
 import { useStore, answerApproval, answerQuestion, guard } from '../store.js';
 
@@ -137,15 +137,49 @@ function RewindMenu({ message, onRewind, close }) {
   );
 }
 
-export const Message = memo(function Message({ message, modelLabel, onBranch, onRewind }) {
+const textOf = message => message.parts.filter(p => p.type === 'text').map(p => p.text).join('\n\n');
+
+// An icon button whose name shows in a tooltip on hover.
+function Action({ label, onClick, children, pressed }) {
+  return <button className="msg-action" aria-label={label} data-tip={label} aria-pressed={pressed} onClick={onClick}>{children}</button>;
+}
+
+function CopyAction({ message }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => { navigator.clipboard.writeText(textOf(message)); setCopied(true); setTimeout(() => setCopied(false), 1400); };
+  return <Action label={copied ? 'Copied' : 'Copy'} onClick={copy}>{copied ? <Check size={14} /> : <Copy size={14} />}</Action>;
+}
+
+// Editing a message replaces it and everything after it, then sends the new text.
+function EditBox({ message, onSave, onCancel }) {
+  const [text, setText] = useState(textOf(message));
+  const save = () => { if (text.trim()) onSave(message, text.trim()); };
+  return (
+    <div className="edit-box">
+      <textarea autoFocus value={text} rows={Math.min(12, text.split('\n').length + 1)} onChange={e => setText(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); } if (e.key === 'Escape') onCancel(); }} />
+      <div className="edit-actions">
+        <span className="hint">The replies after this message are replaced.</span>
+        <button className="btn" onClick={onCancel}>Cancel</button>
+        <button className="btn primary" disabled={!text.trim()} onClick={save}>Send</button>
+      </div>
+    </div>
+  );
+}
+
+export const Message = memo(function Message({ message, modelLabel, onBranch, onRewind, onEdit, busy }) {
   const [menu, setMenu] = useState(false);
+  const [editing, setEditing] = useState(false);
   if (message.role === 'user') {
+    if (editing) return <article className="msg user"><EditBox message={message} onCancel={() => setEditing(false)} onSave={(m, text) => { setEditing(false); onEdit(m, text); }} /></article>;
     return (
       <article className="msg user">
         <div className="user-bubble"><Parts parts={message.parts} /></div>
         <div className="msg-actions">
-          <button className="msg-action" title="Rewind to before this message" onClick={() => setMenu(!menu)}><RotateCcw size={13} /> Rewind</button>
-          <button className="msg-action" title="Edit from here in a new branch" onClick={() => onBranch(message)}><GitBranch size={13} /> Branch</button>
+          <CopyAction message={message} />
+          {!busy ? <Action label="Edit" onClick={() => setEditing(true)}><Pencil size={14} /></Action> : null}
+          {!busy ? <Action label="Rewind" pressed={menu} onClick={() => setMenu(!menu)}><RotateCcw size={14} /></Action> : null}
+          <Action label="Branch" onClick={() => onBranch(message)}><GitBranch size={14} /></Action>
           {menu ? <RewindMenu message={message} onRewind={onRewind} close={() => setMenu(false)} /> : null}
         </div>
       </article>
@@ -157,6 +191,7 @@ export const Message = memo(function Message({ message, modelLabel, onBranch, on
       <Parts parts={message.parts} />
       {message.error ? <div className="msg-error"><CircleAlert size={14} /> {message.error}</div> : null}
       {!message.parts.length && !message.error ? <div className="muted">No response.</div> : null}
+      {textOf(message) ? <div className="msg-actions start"><CopyAction message={message} /></div> : null}
     </article>
   );
 });

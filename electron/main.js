@@ -26,15 +26,7 @@ const changed = () => send('changed');
 // Menu actions that change one window's layout go only to the focused window.
 const focused = action => BrowserWindow.getFocusedWindow()?.webContents.send('menu', action);
 
-// Orbit Code, the earlier name, kept its data in a different folder.
-function dataFile() {
-  const file = path.join(app.getPath('userData'), 'hanobi-data.json');
-  if (!fs.existsSync(file) && !process.env.HANOBI_USER_DATA) {
-    const old = ['Orbit Code', 'orbit-code'].map(dir => path.join(app.getPath('appData'), dir, 'orbit-data.json')).find(f => fs.existsSync(f));
-    if (old) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.copyFileSync(old, file); }
-  }
-  return file;
-}
+const dataFile = () => path.join(app.getPath('userData'), 'hanobi-data.json');
 
 function createWindow() {
   const win = new BrowserWindow({

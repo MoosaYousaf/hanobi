@@ -7,7 +7,7 @@ export const routeIcon = { subscription: Terminal, key: KeyRound, local: HardDri
 const ORDER = ['subscription', 'key', 'local'];
 
 // Closes a popover on Escape or a click outside it.
-export function useDismiss(open, close) {
+function useDismiss(open, close) {
   const ref = useRef(null);
   useEffect(() => {
     if (!open) return;

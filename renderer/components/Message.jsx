@@ -20,7 +20,7 @@ function CodeBlock({ children, ...props }) {
 }
 const markdownComponents = { pre: CodeBlock, a: ({ node, ...props }) => <a {...props} target="_blank" rel="noreferrer" /> };
 
-export const Prose = memo(function Prose({ text }) {
+const Prose = memo(function Prose({ text }) {
   return <div className="prose"><Markdown remarkPlugins={plugins} components={markdownComponents}>{text}</Markdown></div>;
 });
 

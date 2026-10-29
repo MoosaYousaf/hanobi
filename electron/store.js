@@ -5,21 +5,11 @@ const crypto = require('node:crypto');
 const VERSION = 2;
 const empty = () => ({ version: VERSION, workspaces: [], threads: [], connections: [], mcpServers: [], modelCache: {}, preferences: { theme: 'system', palette: 'hanobi', accent: '#e0532c', suggestReplies: false, systemPrompt: '', lastModel: null } });
 
-// Converts the Orbit Code v1 file: provider-keyed threads become connection-keyed threads.
+// Fills in fields added after a file was written. Workspaces from before Chat and Projects are code folders;
+// main marks the general Chats folder at startup.
 function migrate(loaded) {
-  // Workspaces from before Chat and Projects are code folders; main marks the general Chats folder at startup.
-  if (loaded.version === VERSION) return { ...empty(), ...loaded, workspaces: (loaded.workspaces || []).map(w => ({ kind: 'code', ...w })), preferences: { ...empty().preferences, ...loaded.preferences } };
-  if (loaded.version !== 1) throw new Error(`Unknown data version ${loaded.version}.`);
-  const data = empty();
-  data.workspaces = loaded.workspaces || [];
-  data.threads = (loaded.threads || []).map(({ provider, messages = [], ...thread }) => {
-    const settings = loaded.providerSettings?.[provider] || {};
-    return {
-      ...thread, connectionId: provider === 'claude' ? 'claude-code' : provider, model: settings.model || '', effort: settings.effort || '', mode: settings.mode || 'auto',
-      messages: messages.map(m => ({ id: m.id, at: m.at, role: m.role, parts: [...(m.text ? [{ type: 'text', text: m.text }] : []), ...(m.tools || []).map(t => ({ type: 'tool', name: t.name, input: t.detail, status: 'done' }))] }))
-    };
-  });
-  return data;
+  if (loaded.version !== VERSION) throw new Error(`Unknown data version ${loaded.version}.`);
+  return { ...empty(), ...loaded, workspaces: (loaded.workspaces || []).map(w => ({ kind: 'code', ...w })), preferences: { ...empty().preferences, ...loaded.preferences } };
 }
 
 class Store {

@@ -46,14 +46,6 @@ test('a corrupt data file is kept aside and the app starts empty', () => {
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-test('Orbit Code v1 data migrates to connections and parts', () => {
-  const data = migrate({ version: 1, workspaces: [{ id: 'w', name: 'W', path: '/tmp' }], providerSettings: { claude: { model: 'claude-opus-5-5', effort: 'high', mode: 'read' } },
-    threads: [{ id: 't', workspaceId: 'w', provider: 'claude', title: 'T', messages: [{ id: 'm', role: 'assistant', text: 'Hi', tools: [{ name: 'Bash', detail: 'ls' }] }] }] });
-  assert.equal(data.threads[0].connectionId, 'claude-code');
-  assert.equal(data.threads[0].model, 'claude-opus-5-5');
-  assert.deepEqual(data.threads[0].messages[0].parts.map(p => p.type), ['text', 'tool']);
-});
-
 test('CLI prompts never enter argv, so a prompt cannot act as an option', () => {
   for (const cli of ['claude', 'codex', 'gemini']) {
     const args = command(cli, { model: '', effort: '', mode: 'auto', sessionId: 's1' });

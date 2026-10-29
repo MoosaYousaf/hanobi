@@ -28,7 +28,11 @@ Hanobi runs on macOS 12 Monterey and later, including Intel Macs. It pins Electr
 - Git panel: status, diffs, stage, unstage, commit, and a link to the GitHub remote.
 - A list of the skills that your CLI agents load.
 - Light and dark modes that follow macOS. Theme palettes: Hanobi, Gemini style, ChatGPT style, DeepSeek style, and a custom accent color.
-- Multiple windows and keyboard shortcuts (`⌘N`, `⌘,`, `⌘\`).
+- A **…** menu on each conversation in the sidebar: Rename, Open in split pane, Pin to top, Move to project or workspace, and Delete.
+- Split panes: up to four conversations side by side, each with its own model. Drag a divider to resize; double-click it to make the panes equal (`⌘D` opens a new pane).
+- Focus mode (`⇧⌘F`): one conversation edge to edge in full screen, with no sidebar or toolbars. `Esc` leaves it.
+- Message actions on hover: Copy, Edit, Rewind, and Branch. Edit replaces the message and the replies after it.
+- Multiple windows and keyboard shortcuts (`⌘N`, `⌘D`, `⇧⌘F`, `⌘,`, `⌘\`).
 
 ## Run
 
@@ -65,7 +69,6 @@ Gemini CLI does not serve personal Google AI plans now. Those accounts moved to 
 - API keys, MCP environment values, headers, and OAuth tokens are stored in `hanobi-secrets.json`. Electron `safeStorage` encrypts them with the macOS Keychain. The renderer never receives these values.
 - Prompts go only to the model you choose and to the MCP servers that you turn on.
 - The renderer runs sandboxed with context isolation and a strict Content Security Policy. Links open in your browser.
-- Data from Orbit Code (the earlier name) is copied over on first launch.
 
 ## Development
 

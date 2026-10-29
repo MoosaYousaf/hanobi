@@ -261,7 +261,9 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 .thumb-x { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: var(--text); color: var(--bg); }
 
 /* Popovers and the model picker */
-.picker { position: relative; min-width: 0; }
+.picker { position: relative; min-width: 0; flex: 0 1 auto; max-width: 300px; }
+.picker > .chip { max-width: 100%; }
+.composer-row .mini-select { flex: none; }
 .popover { position: absolute; z-index: 30; background: var(--raised); border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: var(--pop-shadow); }
 .picker-pop { bottom: calc(100% + 8px); left: 0; width: 380px; max-height: min(520px, 70vh); display: flex; flex-direction: column; animation: rise .14s ease-out; }
 .pick-search { display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 42px; border-bottom: 1px solid var(--border); color: var(--text-3); }
@@ -405,3 +407,45 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 .edit-box textarea { width: 100%; resize: vertical; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--accent); background: var(--surface); color: var(--text); font: inherit; line-height: 1.5; }
 .edit-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .edit-actions .hint { margin: 0 auto 0 0; }
+
+.thread-row { cursor: default; }
+.thread-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.thread-pin { flex: none; color: var(--text-3); }
+.thread-more { display: none; place-items: center; width: 22px; height: 22px; margin-right: -4px; border-radius: 5px; color: var(--text-2); }
+.thread-more:hover { background: var(--selected); color: var(--text); }
+.thread-row:hover .thread-more, .thread-row.menu-open .thread-more, .thread-row:focus-within .thread-more { display: inline-grid; }
+.thread-row:hover .thread-time, .thread-row.menu-open .thread-time, .thread-row:focus-within .thread-time { display: none; }
+.menu { position: fixed; z-index: 60; min-width: 200px; max-width: 280px; max-height: 60vh; overflow-y: auto; padding: 4px; border-radius: 10px; background: var(--raised); border: 1px solid var(--border); box-shadow: var(--pop-shadow); font-weight: 400; }
+.menu-item { display: flex; align-items: center; gap: 9px; width: 100%; height: 30px; padding: 0 9px; border-radius: 6px; color: var(--text); text-align: left; }
+.menu-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-item svg { flex: none; color: var(--text-2); }
+.menu-item:hover:not(:disabled), .menu-item:focus-visible { background: var(--hover); outline: none; }
+.menu-item:disabled { color: var(--text-3); }
+.menu-item.danger, .menu-item.danger svg { color: var(--danger); }
+.menu-sep { height: 1px; margin: 4px 2px; background: var(--border); }
+
+/* Split panes. Each pane is a size container, so a narrow pane tightens its own spacing and toolbar. */
+.panes { flex: 1; min-height: 0; display: flex; }
+.pane { position: relative; min-width: 0; display: flex; flex-direction: column; container-type: inline-size; }
+.pane > .thread { flex: 1; }
+.pane:not(:first-child) .topbar { padding-left: 16px; }
+.pane.active .topbar { box-shadow: inset 0 -2px 0 var(--accent); }
+.pane-divider { flex: none; width: 7px; margin: 0 -3px; z-index: 3; cursor: col-resize; background: linear-gradient(var(--border), var(--border)) center / 1px 100% no-repeat; }
+.pane-divider:hover, body.resizing .pane-divider { background-image: linear-gradient(var(--border-strong), var(--border-strong)); background-size: 3px 100%; }
+body.resizing { cursor: col-resize; user-select: none; }
+@container (max-width: 620px) {
+  .column { padding: 20px 14px 16px; }
+  .composer-wrap { padding: 0 12px 10px; }
+  .top-actions .icon-btn[title="Rename"], .top-actions .icon-btn[title="Show folder in Finder"], .top-actions .divider { display: none; }
+  .composer-note { justify-content: flex-start; }
+}
+
+/* Focus mode: one thread, edge to edge, in full screen. */
+.thread { position: relative; }
+.app.focus .column { max-width: none; padding: 30px 32px 18px; }
+.app.focus .composer-wrap { max-width: none; padding: 0; }
+.app.focus .composer { border-radius: 0; border-width: 1px 0 0; box-shadow: none; background: var(--bg); padding: 10px 24px 8px 32px; }
+.app.focus .composer-note { display: none; }
+.focus-exit { position: absolute; top: 8px; right: 10px; z-index: 5; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 6px; color: var(--text-3); opacity: 0; transition: opacity .15s; }
+.thread:hover .focus-exit, .focus-exit:focus-visible { opacity: 1; }
+.focus-exit:hover { background: var(--hover); color: var(--text); }

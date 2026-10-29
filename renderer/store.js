@@ -10,7 +10,8 @@ let state = {
   threads: {}, // id -> thread with messages
   live: {}, // threadId -> streaming parts
   approvals: [], // approval requests and model questions; questions carry `questions`
-  ui: { view: null, workspaceId: null, threadId: null, projectId: null, panel: null, settings: null, sidebar: true },
+  // panes: the threads shown side by side; threadId is the active pane. sizes: pane width fractions.
+  ui: { view: null, workspaceId: null, threadId: null, projectId: null, panes: [], sizes: [], focus: false, panel: null, settings: null, sidebar: true },
   toast: null,
   dialog: null // { kind: 'text' | 'confirm', title, message, value, confirmLabel, danger, resolve }
 };
@@ -40,9 +41,11 @@ export async function refresh() {
   const view = ui.view || (app.workspaces.some(w => w.kind === 'code') ? 'code' : 'chat');
   const current = app.workspaces.find(w => w.id === ui.workspaceId);
   const workspaceId = fitsView(current, view) ? current.id : app.workspaces.find(w => fitsView(w, view))?.id || null;
-  const threadId = app.threads.some(t => t.id === ui.threadId) ? ui.threadId : null;
+  const panes = ui.panes.filter(id => app.threads.some(t => t.id === id));
+  // When the open thread was deleted, another pane takes over. No open thread (home or a project page) stays that way.
+  const threadId = !ui.threadId || app.threads.some(t => t.id === ui.threadId) ? ui.threadId : panes[0] || null;
   const projectId = app.workspaces.some(w => w.id === ui.projectId && w.kind === 'project') ? ui.projectId : null;
-  set({ app, ui: { ...ui, view, workspaceId, threadId, projectId } });
+  set({ app, ui: { ...ui, view, workspaceId, threadId, projectId, panes, sizes: panes.length === ui.panes.length ? ui.sizes : equal(panes.length) } });
   if (app.warning && !refresh.warned) { refresh.warned = true; toast(app.warning); }
 }
 export async function loadThread(id) {
@@ -50,14 +53,40 @@ export async function loadThread(id) {
   const thread = await call('thread', id);
   set(s => ({ threads: { ...s.threads, [id]: thread }, live: thread.live ? { ...s.live, [id]: thread.live } : s.live }));
 }
-export async function openThread(id) {
+export const MAX_PANES = 4;
+export const equal = n => Array.from({ length: n }, () => 1 / n);
+
+// Opening a thread shows it in the active pane. A thread that is already in a pane gets focus instead.
+function panesFor(id, split) {
+  const { panes, threadId } = state.ui;
+  if (panes.includes(id)) return panes;
+  if (!threadId || !panes.includes(threadId)) return [id];
+  if (split) return [...panes, id];
+  return panes.map(p => (p === threadId ? id : p));
+}
+export function focusPane(id) { if (id !== state.ui.threadId) show(id); }
+function show(id, split = false) {
   const thread = state.app.threads.find(t => t.id === id);
   const workspace = state.app.workspaces.find(w => w.id === thread?.workspaceId);
-  setUi({ threadId: id, projectId: null, workspaceId: workspace?.id ?? state.ui.workspaceId, ...(workspace ? { view: workspace.kind === 'code' ? 'code' : 'chat' } : {}) });
+  const panes = panesFor(id, split);
+  setUi({ threadId: id, projectId: null, panes, sizes: panes.length === state.ui.panes.length ? state.ui.sizes : equal(panes.length),
+    workspaceId: workspace?.id ?? state.ui.workspaceId, ...(workspace ? { view: workspace.kind === 'code' ? 'code' : 'chat' } : {}) });
+}
+export async function openThread(id) {
+  show(id);
   await loadThread(id);
 }
+export async function openInSplit(id) {
+  if (state.ui.threadId && !state.ui.panes.includes(id) && state.ui.panes.length >= MAX_PANES) throw new Error(`Up to ${MAX_PANES} panes fit. Close a pane first.`);
+  show(id, true);
+  await loadThread(id);
+}
+export function closePane(id) {
+  const panes = state.ui.panes.filter(p => p !== id);
+  setUi({ panes, sizes: equal(panes.length), threadId: state.ui.threadId === id ? panes.at(-1) || null : state.ui.threadId });
+}
 // Without a workspace id, the new conversation goes to the selected workspace if it fits the view, else the first that fits.
-export async function newThread(workspaceId) {
+export async function newThread(workspaceId, { split = false } = {}) {
   const { app, ui } = state;
   const selected = app.workspaces.find(w => w.id === ui.workspaceId);
   workspaceId ??= fitsView(selected, ui.view) ? selected.id : app.workspaces.find(w => fitsView(w, ui.view))?.id;
@@ -67,9 +96,10 @@ export async function newThread(workspaceId) {
     if (!chosen) return;
     workspaceId = chosen.id;
   }
+  if (split && state.ui.threadId && state.ui.panes.length >= MAX_PANES) throw new Error(`Up to ${MAX_PANES} panes fit. Close a pane first.`);
   const thread = await call('thread:new', workspaceId);
-  set(s => ({ threads: { ...s.threads, [thread.id]: thread } }));
-  setUi({ threadId: thread.id, projectId: null, workspaceId });
+  set(s => ({ threads: { ...s.threads, [thread.id]: thread }, app: { ...s.app, threads: [thread, ...s.app.threads] } }));
+  show(thread.id, split);
   await refresh();
 }
 
@@ -94,6 +124,9 @@ export function start() {
     if (action === 'settings') setUi({ settings: 'models' });
     if (action === 'new-thread') guard(newThread)();
     if (action === 'sidebar') setUi({ sidebar: !state.ui.sidebar });
+    if (action === 'split') guard(() => newThread(undefined, { split: true }))();
+    if (action === 'focus') toggleFocus();
+    if (action === 'focus-off' && state.ui.focus) setUi({ focus: false });
   });
   refresh().catch(toast);
 }
@@ -120,5 +153,11 @@ export function closeDialog(result) {
 export async function deleteThread(thread) {
   if (!await askConfirm({ title: `Delete “${thread.title}”?`, message: 'The conversation is deleted from Hanobi. You cannot undo this.', confirmLabel: 'Delete', danger: true })) return;
   await call('thread:delete', thread.id);
-  set(s => ({ ui: { ...s.ui, threadId: s.ui.threadId === thread.id ? null : s.ui.threadId } }));
+  closePane(thread.id);
+}
+
+// Focus mode: one pane, edge to edge, no sidebar or toolbars, in macOS full screen. Escape or the shortcut leaves it.
+export function toggleFocus(on = !state.ui.focus) {
+  setUi({ focus: on });
+  call('window:fullscreen', on).catch(() => {});
 }

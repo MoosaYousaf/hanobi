@@ -23,6 +23,8 @@ let store, secrets, mcp, runner;
 
 function send(channel, value) { for (const win of windows) if (!win.isDestroyed()) win.webContents.send(channel, value); }
 const changed = () => send('changed');
+// Menu actions that change one window's layout go only to the focused window.
+const focused = action => BrowserWindow.getFocusedWindow()?.webContents.send('menu', action);
 
 // Orbit Code, the earlier name, kept its data in a different folder.
 function dataFile() {
@@ -43,6 +45,8 @@ function createWindow() {
   });
   windows.add(win);
   win.on('closed', () => windows.delete(win));
+  // Leaving full screen with the window button also leaves focus mode.
+  win.on('leave-full-screen', () => win.webContents.send('menu', 'focus-off'));
   if (process.env.VITE_DEV_SERVER_URL) win.loadURL(process.env.VITE_DEV_SERVER_URL);
   else win.loadFile(path.join(__dirname, '../dist/renderer/index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:\/\//.test(url)) shell.openExternal(url); return { action: 'deny' }; });
@@ -129,6 +133,16 @@ const handlers = {
     try { runner.setThreadSettings(thread.id, base); } catch {}
     changed(); return threadView(thread.id);
   },
+  'thread:pin': (id, pinned) => { store.thread(id).pinned = !!pinned; store.save(); changed(); },
+  // Moving changes the working folder, so a CLI session cannot continue; the next turn replays the transcript.
+  'thread:move': (id, workspaceId) => {
+    if (runner.runs.has(id)) throw new Error('Stop the reply first.');
+    const thread = store.thread(id);
+    const from = store.workspace(thread.workspaceId), to = store.workspace(workspaceId);
+    if ((from.kind === 'code') !== (to.kind === 'code')) throw new Error('A conversation moves only between chats and projects, or between code workspaces.');
+    if (from.id !== to.id) store.update(id, { workspaceId, sessionId: null, replay: thread.messages.length > 0 });
+    changed(); send('thread-changed', { threadId: id });
+  },
   'thread:rename': (id, title) => { store.update(id, { title: String(title).trim().slice(0, 100) || 'Conversation' }); changed(); },
   'thread:delete': id => { if (runner.runs.has(id)) throw new Error('Stop the reply first.'); store.removeThread(id); changed(); },
   'thread:rewind': async (id, messageId, options) => { const result = await runner.rewind(id, messageId, options); changed(); send('thread-changed', { threadId: id }); if (options?.code) send('git-changed', store.thread(id).workspaceId); return result; },
@@ -194,7 +208,8 @@ const handlers = {
   'git:commit': async (id, message) => { const out = await git.commit(store.workspace(id).path, message); send('git-changed', id); return out; },
   'git:remote': async id => { const { remote } = await git.status(store.workspace(id).path); if (!remote) throw new Error('No GitHub origin remote found.'); return shell.openExternal(remote); },
   'open:external': url => { if (/^https:\/\//.test(url)) return shell.openExternal(url); },
-  'window:new': () => { createWindow(); }
+  'window:new': () => { createWindow(); },
+  'window:fullscreen': on => { const win = BrowserWindow.getFocusedWindow(); if (win && win.isFullScreen() !== !!on) win.setFullScreen(!!on); }
 };
 
 app.whenReady().then(() => {
@@ -213,7 +228,7 @@ app.whenReady().then(() => {
     { label: 'Hanobi', submenu: [{ role: 'about' }, { type: 'separator' }, { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => send('menu', 'settings') }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { type: 'separator' }, { role: 'quit' }] },
     { label: 'File', submenu: [{ label: 'New Conversation', accelerator: 'CmdOrCtrl+N', click: () => send('menu', 'new-thread') }, { label: 'New Window', accelerator: 'CmdOrCtrl+Shift+N', click: createWindow }, { type: 'separator' }, { role: 'close' }] },
     { role: 'editMenu' },
-    { label: 'View', submenu: [{ label: 'Toggle Sidebar', accelerator: 'CmdOrCtrl+\\', click: () => send('menu', 'sidebar') }, { type: 'separator' }, { role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }] },
+    { label: 'View', submenu: [{ label: 'Toggle Sidebar', accelerator: 'CmdOrCtrl+\\', click: () => send('menu', 'sidebar') }, { label: 'New Split Pane', accelerator: 'CmdOrCtrl+D', click: () => focused('split') }, { label: 'Focus Mode', accelerator: 'CmdOrCtrl+Shift+F', click: () => focused('focus') }, { type: 'separator' }, { role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }] },
     { role: 'windowMenu' }
   ]));
   if (!app.isPackaged) app.dock?.setIcon(path.join(__dirname, '../build/icon.png'));

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { PanelLeftOpen, GitCompare, Sparkles, Trash2, Pencil, FolderOpen } from 'lucide-react';
-import { useStore, setUi, loadThread, openThread, newThread, call, guard, toast, askText, askConfirm, deleteThread } from '../store.js';
+import { PanelLeftOpen, GitCompare, Sparkles, Trash2, Pencil, FolderOpen, Maximize2, Minimize2, X, Columns2 } from 'lucide-react';
+import { useStore, setUi, loadThread, openThread, newThread, call, guard, toast, askText, askConfirm, deleteThread, closePane, toggleFocus, MAX_PANES } from '../store.js';
 import { modelLabel } from '../labels.js';
 import { Message, LiveMessage } from './Message.jsx';
 import { Composer, setDraft } from './Composer.jsx';
@@ -8,7 +8,7 @@ import { Spark } from './Spark.jsx';
 
 const PAGE = 80;
 
-function Header({ thread, workspace }) {
+function Header({ thread, workspace, panes, index }) {
   const sidebar = useStore(s => s.ui.sidebar);
   const panel = useStore(s => s.ui.panel);
   const running = useStore(s => !!s.live[thread.id]);
@@ -17,7 +17,7 @@ function Header({ thread, workspace }) {
   const toggle = name => setUi({ panel: panel === name ? null : name });
   return (
     <header className="topbar drag">
-      {!sidebar ? <button className="icon-btn no-drag" title="Show sidebar (⌘\)" onClick={() => setUi({ sidebar: true })}><PanelLeftOpen size={16} /></button> : null}
+      {!sidebar && index === 0 ? <button className="icon-btn no-drag" title="Show sidebar (⌘\)" onClick={() => setUi({ sidebar: true })}><PanelLeftOpen size={16} /></button> : null}
       <div className="crumbs no-drag">
         <span className="crumb-ws">{workspace.name}</span>
         <span className="crumb-sep">/</span>
@@ -30,6 +30,10 @@ function Header({ thread, workspace }) {
         <span className="divider" />
         <button className={`icon-btn ${panel === 'skills' ? 'on' : ''}`} title="Skills" onClick={() => toggle('skills')}><Sparkles size={15} /></button>
         <button className={`icon-btn ${panel === 'git' ? 'on' : ''}`} title="Changes" onClick={() => toggle('git')}><GitCompare size={15} /></button>
+        <span className="divider" />
+        {panes < MAX_PANES ? <button className="icon-btn" title="New split pane (⌘D)" onClick={guard(() => newThread(workspace.id, { split: true }))}><Columns2 size={15} /></button> : null}
+        <button className="icon-btn" title="Focus mode (⇧⌘F)" onClick={() => toggleFocus(true)}><Maximize2 size={15} /></button>
+        {panes > 1 ? <button className="icon-btn" title="Close pane" onClick={() => closePane(thread.id)}><X size={15} /></button> : null}
       </div>
     </header>
   );
@@ -46,7 +50,8 @@ function Suggestions({ thread }) {
   );
 }
 
-export function ThreadView({ threadId }) {
+export function ThreadView({ threadId, panes = 1, index = 0 }) {
+  const focus = useStore(s => s.ui.focus);
   const app = useStore(s => s.app);
   const thread = useStore(s => s.threads[threadId]);
   const running = useStore(s => !!s.live[threadId]);
@@ -80,7 +85,9 @@ export function ThreadView({ threadId }) {
   const messages = thread.messages.slice(-count);
   return (
     <div className="thread">
-      <Header thread={thread} workspace={workspace} />
+      {focus
+        ? <button className="focus-exit" title="Leave focus mode (Esc)" onClick={() => toggleFocus(false)}><Minimize2 size={14} /></button>
+        : <Header thread={thread} workspace={workspace} panes={panes} index={index} />}
       <div className="scroller" ref={scroller} onScroll={e => { const el = e.currentTarget; pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
         <div className="column">
           {thread.messages.length > count ? <button className="load-more" onClick={() => setCount(count + PAGE)}>Show earlier messages</button> : null}

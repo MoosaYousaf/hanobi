@@ -20,6 +20,16 @@ export function useDismiss(open, close) {
   return ref;
 }
 
+// The /model, /effort, and /access commands open a picker through a window event that names it.
+export function useOpenOn(key, open) {
+  useEffect(() => {
+    if (!key) return;
+    const onOpen = e => { if (e.detail === key) open(); };
+    window.addEventListener('hanobi-picker', onOpen);
+    return () => window.removeEventListener('hanobi-picker', onOpen);
+  }, [key, open]);
+}
+
 function ConnectionGroup({ connection, query, current, onPick }) {
   const preset = useStore(s => s.app.presets[connection.preset]);
   const [models, setModels] = useState(preset.models || null);
@@ -53,8 +63,9 @@ function ConnectionGroup({ connection, query, current, onPick }) {
   );
 }
 
-export function ModelPicker({ thread, label, disabled }) {
+export function ModelPicker({ thread, label, disabled, openKey }) {
   const [open, setOpen] = useState(false);
+  useOpenOn(disabled ? null : openKey, useCallback(() => setOpen(true), []));
   const [query, setQuery] = useState('');
   const connections = useStore(s => s.app.connections);
   const close = useCallback(() => { setOpen(false); setQuery(''); }, []);
@@ -91,8 +102,9 @@ export function ModelPicker({ thread, label, disabled }) {
 
 // A short list of choices (access mode, effort) in the same popover as the model list. Native selects use the
 // system menu, which ignores the theme and opens scrolled to the selected item.
-export function OptionPicker({ options, value, onPick, disabled, title, danger, label: name, align = 'start' }) {
+export function OptionPicker({ options, value, onPick, disabled, title, danger, label: name, align = 'start', openKey }) {
   const [open, setOpen] = useState(false);
+  useOpenOn(disabled ? null : openKey, useCallback(() => setOpen(true), []));
   const close = useCallback(() => setOpen(false), []);
   const ref = useDismiss(open, close);
   const current = options.find(o => o.id === value) || options[0];

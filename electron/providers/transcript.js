@@ -23,7 +23,8 @@ function userContent(message, format, texts = new Map()) {
     if (p.type !== 'file' || !IMAGE.test(p.mediaType)) return [];
     try { return [{ mediaType: p.mediaType, data: fs.readFileSync(p.path).toString('base64') }]; } catch { return []; }
   });
-  const text = [attachmentBlock(message.parts, texts), textOf(message.parts)].filter(Boolean).join('\n\n');
+  // prompt: the expanded text of a /name command; the parts keep what the user typed.
+  const text = [attachmentBlock(message.parts, texts), message.prompt ?? textOf(message.parts)].filter(Boolean).join('\n\n');
   if (!images.length) return text;
   if (format === 'anthropic') return [...images.map(i => ({ type: 'image', source: { type: 'base64', media_type: i.mediaType, data: i.data } })), { type: 'text', text }];
   return [...images.map(i => ({ type: 'image_url', image_url: { url: `data:${i.mediaType};base64,${i.data}` } })), { type: 'text', text }];

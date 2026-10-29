@@ -7,6 +7,7 @@ const cli = require('./providers/cli');
 const anthropic = require('./providers/anthropic');
 const git = require('./git');
 const suggest = require('./suggest');
+const commands = require('./commands');
 const projects = require('./projects');
 const openai = require('./providers/openai');
 const { contextWindow } = require('./providers/usage');
@@ -123,6 +124,8 @@ class Runner {
     const { connection, preset } = this.resolve(thread.connectionId);
     if (!connection.ready) throw new Error(`${connection.name}: ${connection.detail}.`);
     if (preset.kind !== 'cli' && !thread.model) throw new Error('Choose a model first.');
+    // @path mentions of workspace files go with the message like attachments, read where they are.
+    for (const part of commands.mentions(text, workspace.path)) if (!attached.some(p => p.path === part.path)) attached.push(part);
 
     const history = thread.messages.slice();
     const user = this.store.append(threadId, { role: 'user', parts: [...images.map(i => ({ type: 'image', mediaType: i.mediaType, data: i.data, name: i.name })), ...attached, ...(text ? [{ type: 'text', text }] : [])] });
@@ -140,6 +143,9 @@ class Runner {
     const chat = workspace.kind === 'chats' || workspace.kind === 'project';
     const checkpoint = chat ? null : await git.snapshot(workspace.path).catch(() => null);
     if (checkpoint) this.store.patchMessage(threadId, userId, { checkpoint });
+    // A /name file command or skill becomes its prompt text. The message shows what the user typed.
+    const expanded = await commands.expand(text, workspace.path, preset.cli).catch(() => null);
+    if (expanded) { this.store.patchMessage(threadId, userId, { prompt: expanded }); text = expanded; }
     let sent = -1;
     const ticker = setInterval(() => { if (draft.version !== sent) { sent = draft.version; this.send('run-update', { threadId, parts: draft.parts }); } }, UPDATE_MS);
     const finish = message => {
@@ -172,19 +178,21 @@ class Runner {
       }
       const stopped = controller.signal.aborted;
       const saved = finish(stopped && !draft.parts.length ? null : { parts: draft.final(), native: result?.native, ...(stopped ? { stopped: true } : {}) });
-      if (saved && !stopped && preset.kind !== 'cli' && this.store.data.preferences.suggestReplies) this.suggestReplies(threadId, connection, preset, saved).catch(() => {});
+      // Claude Code makes its own suggestions; the other providers make them with one extra request when the user turns it on.
+      if (saved && !stopped && preset.cli !== 'claude' && this.store.data.preferences.suggestReplies) this.suggestReplies(threadId, connection, preset, saved).catch(() => {});
     } catch (error) {
       // A user stop is not a failure: keep whatever arrived and mark it stopped.
       if (controller.signal.aborted) finish(draft.parts.length ? { parts: draft.final(), stopped: true } : null);
       else finish({ parts: draft.final(), error: error.message || String(error) });
     }
   }
-  // One extra request to the same model. A failure only means no suggestions.
+  // One extra request to the same model; CLIs run once without a session or tools. A failure only means no suggestions.
   async suggestReplies(threadId, connection, preset, reply) {
     const thread = this.store.thread(threadId);
     const user = thread.messages.findLast(m => m.role === 'user');
-    const request = { apiKey: this.secrets.get(`key:${connection.id}`), model: thread.model, prompt: suggest.prompt(user, reply), signal: AbortSignal.timeout(30000) };
-    const text = preset.kind === 'anthropic' ? await anthropic.complete(request) : await openai.complete({ ...request, baseURL: connection.baseURL || preset.baseURL });
+    const request = { apiKey: this.secrets.get(`key:${connection.id}`), model: thread.model, prompt: suggest.prompt(user, reply), signal: AbortSignal.timeout(preset.kind === 'cli' ? 90000 : 30000) };
+    const text = preset.kind === 'cli' ? await cli.complete({ preset, ...request })
+      : preset.kind === 'anthropic' ? await anthropic.complete(request) : await openai.complete({ ...request, baseURL: connection.baseURL || preset.baseURL });
     const suggestions = suggest.parse(text);
     if (!suggestions.length || this.store.thread(threadId).messages.at(-1)?.id !== reply.id) return;
     this.store.patchMessage(threadId, reply.id, { suggestions });

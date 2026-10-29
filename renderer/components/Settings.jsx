@@ -293,8 +293,8 @@ function GeneralPane() {
       </div>
       {prefs.palette === 'custom' ? <label className="palette-custom">Accent color <input type="color" value={prefs.accent || '#e0532c'} onChange={e => setPref({ accent: e.target.value })} /></label> : null}
       <h3>Suggested replies</h3>
-      <label className="check"><input type="checkbox" checked={!!prefs.suggestReplies} onChange={e => setPref({ suggestReplies: e.target.checked })} /> Suggest replies for API and local models</label>
-      <p className="hint">Each reply then makes one extra short request to the same model, which uses tokens. Claude Code always makes its own suggestions. Codex and GitHub Copilot make none.</p>
+      <label className="check"><input type="checkbox" checked={!!prefs.suggestReplies} onChange={e => setPref({ suggestReplies: e.target.checked })} /> Suggest the next message for every model</label>
+      <p className="hint">Claude Code always makes its own suggestions, at no extra cost. With this on, every other model makes them too: each reply makes one extra short request to the same model. API models use tokens; Codex uses a little of your plan; GitHub Copilot uses one request of your plan unless the model is free on it. The first suggestion shows in the empty message box; press Tab to use it.</p>
       <h3>Instructions for API and local models</h3>
       <textarea className="system-prompt" rows={6} value={system} onChange={e => setSystem(e.target.value)} onBlur={() => system !== prefs.systemPrompt && setPref({ systemPrompt: system })} placeholder="For example: Answer briefly. Use metric units." />
       <p className="hint">CLI agents use their own instructions, such as CLAUDE.md or AGENTS.md.</p>

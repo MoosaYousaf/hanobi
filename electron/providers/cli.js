@@ -2,10 +2,12 @@ const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const { replayPrompt } = require('./transcript');
 const codexServer = require('./codex-server');
 const copilotAcp = require('./copilot-acp');
 const usage = require('./usage');
+const { Draft } = require('../draft');
 
 // Apps opened from Finder get a minimal PATH, so look where CLIs and npx are usually installed.
 function searchPath() {
@@ -234,4 +236,36 @@ function runTurn({ preset, thread, history, prompt, cwd, chat = false, mcpServer
   });
 }
 
-module.exports = { searchPath, cliPath, command, apply, run };
+// One short request without a session, tools, or files, for helper text such as suggested replies.
+// It runs in the temporary folder with read-only access and low effort, and returns the reply text.
+function completeArgs(cli, model) {
+  if (cli === 'codex') return ['exec', '--json', '--skip-git-repo-check', '--ephemeral', '--sandbox', 'read-only', '-c', 'approval_policy="never"', '-c', 'model_reasoning_effort="low"', ...(model ? ['--model', model] : []), '-'];
+  if (cli === 'claude') return ['-p', '--output-format', 'stream-json', '--verbose', '--tools', '', '--no-session-persistence', ...(model ? ['--model', model] : [])];
+  return command(cli, { model, effort: 'low', mode: 'read', sessionId: crypto.randomUUID() });
+}
+function complete({ preset, model = '', prompt, signal }) {
+  const executable = cliPath(preset.cli);
+  if (!executable) return Promise.reject(new Error(`${preset.name} is not installed.`));
+  const draft = new Draft();
+  const env = { ...process.env, PATH: searchPath().join(path.delimiter), NO_COLOR: '1', COPILOT_AUTO_UPDATE: 'false' };
+  const child = spawn(executable, completeArgs(preset.cli, model), { cwd: os.tmpdir(), env, stdio: ['pipe', 'pipe', 'ignore'], signal });
+  child.stdin.on('error', () => {});
+  child.stdin.end(prompt);
+  let pending = '';
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', chunk => {
+    const lines = (pending + chunk).split('\n');
+    pending = lines.pop();
+    for (const line of lines) { try { apply(preset.cli, JSON.parse(line), draft); } catch {} }
+  });
+  return new Promise((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', code => {
+      try { if (pending.trim()) apply(preset.cli, JSON.parse(pending), draft); } catch {}
+      const text = draft.parts.filter(p => p.type === 'text').map(p => p.text).join('\n');
+      if (text.trim()) resolve(text); else reject(new Error(`${preset.name} exited with code ${code}.`));
+    });
+  });
+}
+
+module.exports = { searchPath, cliPath, command, apply, run, complete, completeArgs };

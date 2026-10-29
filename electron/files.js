@@ -2,7 +2,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFile } = require('node:child_process');
-const { cachedText } = require('./extract');
+const { cachedText, extractText, supported } = require('./extract');
 
 // Files that go in and out of conversations. Each thread has a folder under <userData>/Files/<thread id>/:
 // in/ holds attachments (copies, so a moved original does not break the chat) and out/ holds files the model made.
@@ -147,12 +147,22 @@ class Files {
     const texts = new Map();
     for (const part of messages.flatMap(m => m.parts || [])) {
       if (part.type !== 'file' || texts.has(part.path) || /^image\//.test(part.mediaType)) continue;
-      texts.set(part.path, await cachedText(path.dirname(part.path), part.name).catch(() => null));
+      texts.set(part.path, await (part.mention ? workspaceText(part.path) : cachedText(path.dirname(part.path), part.name)).catch(() => null));
     }
     return texts;
   }
 
   async remove(threadId) { await fs.rm(this.dir(threadId, ''), { recursive: true, force: true }); }
+}
+
+// A mentioned workspace file is read where it is, so no text cache goes into the user's folder.
+// Documents use the extractors; other files count as text when they have no NUL bytes.
+async function workspaceText(file) {
+  if (supported(file)) return extractText(file);
+  const { size } = await fs.stat(file);
+  if (size > 2 * 1024 * 1024) return null;
+  const bytes = await fs.readFile(file);
+  return bytes.includes(0) ? null : bytes.toString('utf8');
 }
 
 // The attachment block of one user message, for prompts. Text that does not fit is cut; files without text are listed.

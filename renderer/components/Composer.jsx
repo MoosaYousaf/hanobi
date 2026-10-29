@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowUp, Square, Plus, X, Mic } from 'lucide-react';
-import { useStore, getState, call, guard, toast, askConfirm } from '../store.js';
+import { useStore, getState, call, guard, toast, askConfirm, askText, setUi, newThread, openThread, focusPane } from '../store.js';
+import { CommandMenu, useMenuItems, trigger, builtin } from './CommandMenu.jsx';
 import { startVoice, stopVoice, cancelVoice } from '../voice/voice.js';
 import { ModelPicker, OptionPicker } from './ModelPicker.jsx';
 import { formatSize } from './Files.jsx';
@@ -138,6 +139,22 @@ export function Composer({ thread, workspace, modelLabel }) {
   const chatCli = isCli && workspace.kind && workspace.kind !== 'code';
 
   const update = value => { setText(value); drafts.set(thread.id, value); };
+  // The / or @ menu follows the caret. A closed menu stays closed until the trigger word changes.
+  const [menu, setMenu] = useState(null);
+  const [index, setIndex] = useState(0);
+  const dismissed = useRef(null); // a ref, so an onSelect in the same event sees the Escape at once
+  const items = useMenuItems(menu, workspace.id);
+  const follow = (value, caret) => {
+    const found = trigger(value, caret);
+    const key = found && `${found.kind}:${found.start}`;
+    if (!found) dismissed.current = null;
+    const next = found && key !== dismissed.current ? found : null;
+    setMenu(open => (open?.kind === next?.kind && open?.start === next?.start && open?.query === next?.query ? open : next));
+    if (next?.query !== menu?.query || next?.kind !== menu?.kind) setIndex(0);
+  };
+  // The ghost text: the first suggested reply shows in the empty box, and Tab takes it.
+  const last = thread.messages.at(-1);
+  const ghost = !text && !running && last?.role === 'assistant' ? last.suggestions?.[0] || '' : '';
   // The box fits its text on every change: typing, a send that clears it, voice input, or a restored draft.
   useLayoutEffect(() => {
     const el = input.current;
@@ -160,8 +177,57 @@ export function Composer({ thread, workspace, modelLabel }) {
     }
   });
   const pick = guard(async () => add(await call('files:pick', thread.id)));
+  // Hanobi's own commands run here, for every model, and never go to the model.
+  const signal = name => window.dispatchEvent(new CustomEvent('hanobi-picker', { detail: `${thread.id}:${name}` }));
+  const runBuiltin = guard(async ({ name, args }) => {
+    update(''); setMenu(null);
+    if (name === 'clear') {
+      if (running) throw new Error('Stop the reply first.');
+      focusPane(thread.id);
+      const fresh = await call('thread:new', workspace.id, { connectionId: thread.connectionId, model: thread.model, effort: thread.effort, mode: thread.mode });
+      await openThread(fresh.id);
+      toast('New conversation. The old one is in the sidebar.');
+    }
+    if (name === 'effort' && !(preset?.efforts?.length > 1)) throw new Error('This model has no effort levels.');
+    if (name === 'access' && chatCli) throw new Error('Chats and projects are read-only for CLI agents, so they have no access mode.');
+    if (name === 'model' || name === 'effort' || name === 'access') signal(name);
+    if (name === 'rename') { const title = args || await askText('Conversation name', thread.title); if (title) await call('thread:rename', thread.id, title); }
+    if (name === 'attach') await pick();
+    if (name === 'split') await newThread(workspace.id, { split: true });
+    if (name === 'skills' || name === 'changes') setUi({ panel: name === 'skills' ? 'skills' : 'git' });
+    if (name === 'settings') setUi({ settings: 'models' });
+  });
+  // A picked item: Hanobi commands without arguments run at once; other commands and files go into the text.
+  const choose = item => {
+    const el = input.current;
+    if (menu.kind === 'slash') {
+      if (item.kind === 'builtin' && !item.hint) { runBuiltin({ name: item.name, args: '' }); return; }
+      const rest = text.slice(el.selectionStart).replace(/^\S*/, '');
+      const value = `/${item.name} ${rest.trimStart()}`;
+      update(value); setMenu(null);
+      requestAnimationFrame(() => el.setSelectionRange(item.name.length + 2, item.name.length + 2));
+      return;
+    }
+    const caret = el.selectionStart;
+    const ref = item.name.replace(/ /g, '\\ ');
+    const head = text.slice(0, menu.start) + '@' + ref + (item.kind === 'folder' ? '' : ' ');
+    const value = head + text.slice(caret).replace(/^\S*/, '');
+    update(value);
+    // A folder keeps the menu open, so the search goes on inside it.
+    if (item.kind === 'folder') follow(value, head.length); else setMenu(null);
+    requestAnimationFrame(() => el.setSelectionRange(head.length, head.length));
+  };
+  const onKey = e => {
+    if (menu && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && items.length) { e.preventDefault(); setIndex(i => (i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length); return; }
+    if (menu && (e.key === 'Enter' || e.key === 'Tab') && items[index] && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); choose(items[index]); return; }
+    if (menu && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dismissed.current = `${menu.kind}:${menu.start}`; setMenu(null); return; }
+    if (e.key === 'Tab' && !e.shiftKey && ghost) { e.preventDefault(); update(ghost); return; }
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
+  };
   const send = guard(async () => {
     if (running || (!text.trim() && !files.length)) return;
+    const own = !files.length && builtin(text);
+    if (own) { runBuiltin(own); return; }
     await call('run:send', thread.id, { text, files: files.map(({ path, name }) => ({ path, name })) });
     update(''); setFiles([]);
   });
@@ -173,6 +239,7 @@ export function Composer({ thread, workspace, modelLabel }) {
 
   return (
     <div className="composer-wrap">
+      <CommandMenu open={menu} items={items} index={index} onPick={choose} onHover={setIndex} />
       <div className="composer" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); attach(e.dataTransfer.files); }}>
         {files.length ? (
           <div className="attachments">
@@ -185,11 +252,16 @@ export function Composer({ thread, workspace, modelLabel }) {
           </div>
         ) : null}
         <textarea
-          ref={input} autoFocus rows={1} value={text} placeholder={`Message ${modelLabel.split(' · ')[0]}…`}
-          onChange={e => update(e.target.value)}
+          ref={input} autoFocus rows={1} value={text} className={ghost ? 'ghost' : ''}
+          placeholder={ghost || `Message ${modelLabel.split(' · ')[0]}… (/ for commands, @ for files)`}
+          aria-autocomplete="list" aria-expanded={!!menu}
+          onChange={e => { update(e.target.value); follow(e.target.value, e.target.selectionStart); }}
+          onSelect={e => { if (menu || e.target.value.includes('@') || e.target.value.startsWith('/')) follow(e.target.value, e.target.selectionStart); }}
+          onBlur={() => setMenu(null)}
           onPaste={e => { const files = [...e.clipboardData.files]; if (files.length) { e.preventDefault(); attach(files); } }}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
+          onKeyDown={onKey}
         />
+        {ghost ? <kbd className="ghost-key" title="Press Tab to use the suggestion">Tab</kbd> : null}
         {running
           ? <button className="send stop" title="Stop" onClick={guard(() => call('run:stop', thread.id))}><Square size={11} fill="currentColor" /></button>
           : <button className="send" title="Send (Enter)" disabled={!text.trim() && !files.length} onClick={send}><ArrowUp size={15} strokeWidth={2.4} /></button>}
@@ -199,12 +271,12 @@ export function Composer({ thread, workspace, modelLabel }) {
         <button className="icon-btn tip" data-tip="Attach files" aria-label="Attach files" onClick={pick}><Plus size={16} /></button>
         <MicButton threadId={thread.id} />
         {!chatCli ? (
-          <OptionPicker options={modes} value={mode.id} disabled={running} onPick={onAccess} title={mode.detail} danger={mode.danger} label="Access mode" />
+          <OptionPicker options={modes} value={mode.id} disabled={running} onPick={onAccess} title={mode.detail} danger={mode.danger} label="Access mode" openKey={`${thread.id}:access`} />
         ) : null}
         <span className="grow" />
-        <ModelPicker thread={thread} label={modelLabel} disabled={running} />
+        <ModelPicker thread={thread} label={modelLabel} disabled={running} openKey={`${thread.id}:model`} />
         {preset?.efforts?.length > 1 ? (
-          <OptionPicker options={preset.efforts.map(e => ({ id: e, label: e ? cap(e) : 'Default effort' }))} value={thread.effort} disabled={running} onPick={effort => setting({ effort })} title="Effort" label="Effort" align="end" />
+          <OptionPicker options={preset.efforts.map(e => ({ id: e, label: e ? cap(e) : 'Default effort' }))} value={thread.effort} disabled={running} onPick={effort => setting({ effort })} title="Effort" label="Effort" align="end" openKey={`${thread.id}:effort`} />
         ) : null}
         <UsageRing thread={thread} preset={preset} />
       </div>

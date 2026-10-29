@@ -17,6 +17,7 @@ const github = require('./github');
 const { Files, safeName, mediaType } = require('./files');
 const { Speech, localeFor } = require('./speech');
 const { skills } = require('./skills');
+const commands = require('./commands');
 const desktop = require('./desktop');
 const { Limits } = require('./limits');
 // From package.json, not from Electron: a script started with `electron <file>` reports Electron's version.
@@ -308,6 +309,9 @@ const handlers = {
     store.save(); if ('theme' in patch) nativeTheme.themeSource = ['light', 'dark'].includes(patch.theme) ? patch.theme : 'system'; changed(); },
   'clis:rescan': () => { for (const p of Object.values(presets)) if (p.cli) cliPath(p.cli, true); changed(); },
   skills: id => skills(id ? store.workspace(id).path : null),
+  // The / menu lists file commands and skills; the @ menu searches the workspace files.
+  'commands:list': id => commands.list(id ? store.workspace(id).path : null),
+  'files:search': (id, query) => commands.searchFiles(store.workspace(id).path, String(query || '').slice(0, 200)),
   'git:status': id => git.status(store.workspace(id).path),
   'git:diff': (id, file, options) => git.diff(store.workspace(id).path, file, options || {}),
   'git:stage': async (id, file, unstage) => { await git.stage(store.workspace(id).path, file, unstage); send('git-changed', id); },

@@ -80,7 +80,8 @@ export function ThreadView({ threadId, panes = 1, index = 0 }) {
   const edit = guard(async (message, text) => {
     await call('thread:rewind', thread.id, message.id, { conversation: true });
     const images = message.parts.filter(p => p.type === 'image').map(({ mediaType, data, name }) => ({ mediaType, data, name }));
-    const files = message.parts.filter(p => p.type === 'file').map(({ path, name }) => ({ path, name }));
+    // @mention parts come back from the text, so only real attachments are sent again.
+    const files = message.parts.filter(p => p.type === 'file' && !p.mention).map(({ path, name }) => ({ path, name }));
     setDraft(thread.id, '');
     await call('run:send', thread.id, { text, images, files });
   });

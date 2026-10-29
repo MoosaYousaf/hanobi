@@ -113,6 +113,32 @@ app.whenReady().then(async () => {
     const oneRow = await setComposer('');
     if (!(await setComposer('A long prompt line\n'.repeat(8)) > oneRow + 60)) throw new Error('a long prompt does not grow the composer');
     if (await setComposer('') !== oneRow) throw new Error('the composer stays tall after it is cleared');
+    // Ghost text: the first suggestion shows in the empty box, and Tab takes it.
+    const key = name => win.webContents.executeJavaScript(`document.querySelector('.composer textarea').dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(name)}, bubbles: true, cancelable: true }))`);
+    await until(win, `document.querySelector('.composer textarea').placeholder === 'Show the migration steps' && !!document.querySelector('.ghost-key')`, 'the first suggestion shows as ghost text');
+    await key('Tab');
+    await until(win, `document.querySelector('.composer textarea').value === 'Show the migration steps' && !document.querySelector('.ghost-key')`, 'Tab takes the ghost text');
+    await setComposer('');
+    // The / menu lists Hanobi's commands; Enter on /model opens the model picker.
+    await setComposer('/cl');
+    await until(win, `document.querySelector('.cmd-menu .cmd-item.active .cmd-name')?.textContent === '/clear'`, 'the / menu filters the commands');
+    await shot(win, '1b-slash');
+    await key('Escape');
+    await until(win, `!document.querySelector('.cmd-menu')`, 'Escape closes the / menu');
+    await setComposer('/cle');
+    if (await win.webContents.executeJavaScript(`!!document.querySelector('.cmd-menu')`)) throw new Error('a closed / menu opens again for the same word');
+    await setComposer('');
+    await setComposer('/mod');
+    await key('Enter');
+    await until(win, `!!document.querySelector('.picker-pop .pick-search') && document.querySelector('.composer textarea').value === ''`, '/model opens the model picker');
+    await win.webContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
+    // The @ menu searches the workspace files; Enter puts the path in the text.
+    await setComposer('See @CHANGE');
+    await until(win, `[...document.querySelectorAll('.cmd-menu .cmd-name')].some(n => n.textContent === 'CHANGELOG.md')`, 'the @ menu finds workspace files');
+    await shot(win, '1c-mention');
+    await key('Enter');
+    await until(win, `document.querySelector('.composer textarea').value === 'See @CHANGELOG.md ' && !document.querySelector('.cmd-menu')`, 'a picked file goes into the text');
+    await setComposer('');
     win.webContents.send('run-state', { threadId: 't1', running: true, startedAt: Date.now() - 65000 });
     win.webContents.send('run-update', { threadId: 't1', parts: [text('Checking the docs connector.'), { type: 'tool', id: 'c', name: 'search', server: 'Notion', input: { query: 'release plan' }, status: 'pending' }] });
     win.webContents.send('approval', { id: 'p1', threadId: 't1', callId: 'c', server: 'Notion', tool: 'search', input: { query: 'release plan' } });
@@ -294,7 +320,7 @@ app.whenReady().then(async () => {
     })()`);
     await until(win, `(${JSON.stringify(listed)}).at(-1) === [...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row .thread-title')][0].textContent`, 'dragging a conversation reorders the list');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, saved messages, live reply with approval, elapsed time and background work, themed access and effort pickers, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, Mermaid diagrams, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
+    process.stdout.write('Smoke passed: home, ghost-text suggestion, / commands, @ file mentions, saved messages, live reply with approval, elapsed time and background work, themed access and effort pickers, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, Mermaid diagrams, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
     app.exit(0);
   } catch (error) {
     if (errors.length) console.error('Console errors:\n' + errors.join('\n')); process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }

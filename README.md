@@ -79,14 +79,23 @@ Gemini CLI does not serve personal Google AI plans now. Those accounts moved to 
 npm test            # unit and end-to-end tests (fake model servers, a real MCP server)
 npm run smoke       # starts the real app with throwaway data and drives the UI
 npm run icons       # renders build/icon.icns and docs/cover.png from their sources
-npm run package:mac # unsigned DMG and ZIP in dist/release
+npm run package:mac # DMG and ZIP in dist/release; unsigned when no Developer ID certificate is installed
+npm run package:mac:release # signed and notarized; fails without a certificate
 ```
 
 `SMOKE_SHOTS=<folder> npm run smoke` saves light and dark screenshots. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the parts fit together.
 
-The packaged app is unsigned. macOS may ask you to allow it in **System Settings → Privacy & Security**.
+The packaged app is unsigned for now. macOS may ask you to allow it in **System Settings → Privacy & Security**. [docs/RELEASING.md](docs/RELEASING.md) tells you how to sign, notarize, and publish a release.
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, rules, and tests.
 
 ## Roadmap
 
 1. Live verification of each subscription CLI and API provider on real accounts.
-2. Signing, notarization, auto-update, a license, and contributor guidelines before a public release.
+2. A Developer ID certificate, then signed and notarized releases and auto-update from GitHub Releases.
+
+## License
+
+[MIT](LICENSE)

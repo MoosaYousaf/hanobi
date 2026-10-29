@@ -9,7 +9,8 @@ npm start            # build renderer, open the app
 npm test             # node --test test/*.test.js (fake model servers + a real stdio MCP server)
 npm run smoke        # real app, throwaway data; SMOKE_SHOTS=<dir> saves light/dark screenshots
 npm run icons        # build/icon.svg -> icon.icns/png, docs/cover.html -> cover.png
-npm run package:mac  # unsigned DMG/ZIP in dist/release
+npm run package:mac  # DMG/ZIP in dist/release (unsigned without a Developer ID cert)
+npm run package:mac:release  # signed + notarized; see docs/RELEASING.md
 ```
 
 ## Rules

@@ -1,6 +1,6 @@
 // Desktop app behavior: the window comes back where it was, background replies notify, a global shortcut
 // shows Orin from any app, and a free update check reads GitHub Releases. Electron objects are passed in.
-const RELEASES = 'https://api.github.com/repos/MoosaYousaf/hanobi/releases/latest';
+const RELEASES = 'https://api.github.com/repos/MoosaYousaf/orin/releases/latest';
 const DEFAULT_SHORTCUT = 'Alt+Space';
 
 // Saved bounds are used only when most of the window is on a display that still exists.

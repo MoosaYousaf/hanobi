@@ -18,9 +18,9 @@ test('desktop: versions compare by number, and the update check reads the latest
   assert.equal(compareVersions('0.3.0', '0.3.1'), -1);
   assert.equal(compareVersions('1.0', '1.0.0'), 0);
   const asked = [];
-  const newer = await checkForUpdate('0.3.0', async url => { asked.push(url); return { tag_name: 'v0.4.0', html_url: 'https://github.com/MoosaYousaf/hanobi/releases/tag/v0.4.0' }; });
-  assert.deepEqual({ ...newer, checkedAt: 0 }, { current: '0.3.0', latest: '0.4.0', newer: true, url: 'https://github.com/MoosaYousaf/hanobi/releases/tag/v0.4.0', checkedAt: 0 });
-  assert.equal(asked[0], 'https://api.github.com/repos/MoosaYousaf/hanobi/releases/latest');
+  const newer = await checkForUpdate('0.3.0', async url => { asked.push(url); return { tag_name: 'v0.4.0', html_url: 'https://github.com/MoosaYousaf/orin/releases/tag/v0.4.0' }; });
+  assert.deepEqual({ ...newer, checkedAt: 0 }, { current: '0.3.0', latest: '0.4.0', newer: true, url: 'https://github.com/MoosaYousaf/orin/releases/tag/v0.4.0', checkedAt: 0 });
+  assert.equal(asked[0], 'https://api.github.com/repos/MoosaYousaf/orin/releases/latest');
   assert.equal((await checkForUpdate('0.4.0', async () => ({ tag_name: 'v0.4.0' }))).newer, false);
   assert.deepEqual(await checkForUpdate('0.3.0', async () => { throw new Error('HTTP 404'); }), { current: '0.3.0', error: 'No public release yet.' });
   assert.match((await checkForUpdate('0.3.0', async () => { throw new Error('offline'); })).error, /Could not check: offline/);

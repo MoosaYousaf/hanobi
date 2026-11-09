@@ -8,8 +8,8 @@ Thank you for your help. This file tells you how to set up, change, and test Ori
 2. Clone the repository and install the packages:
 
    ```sh
-   git clone https://github.com/MoosaYousaf/hanobi.git
-   cd hanobi
+   git clone https://github.com/MoosaYousaf/orin.git
+   cd orin
    npm install
    ```
 

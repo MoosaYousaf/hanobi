@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown, Search, RefreshCw, Check, Terminal, KeyRound, HardDrive } from 'lucide-react';
+import { Mark } from './Mark.jsx';
 import { useStore, call, guard, setUi, toast } from '../store.js';
 import { routeLabel } from '../labels.js';
 
 export const routeIcon = { subscription: Terminal, key: KeyRound, local: HardDrive };
+const OverseerIcon = ({ size }) => <Mark size={size} />;
 const ORDER = ['subscription', 'key', 'local'];
 
 // Closes a popover on Escape or a click outside it.
@@ -49,7 +51,7 @@ function ConnectionGroup({ connection, query, current, onPick }) {
       {!connection.ready ? <div className="pick-note">{connection.detail}</div> : null}
       {connection.ready && models && !models.length && !q ? <button className="pick-item muted" onClick={load}>Load available models</button> : null}
       {visible.map(m => {
-        const selected = current.connectionId === connection.id && current.model === m.id;
+        const selected = !current.overseer && current.connectionId === connection.id && current.model === m.id;
         return (
           <button key={m.id || 'default'} className={`pick-item ${selected ? 'selected' : ''}`} disabled={!connection.ready} onClick={() => onPick(connection.id, m.id)}>
             <span className="pick-label">{m.label}</span>
@@ -71,7 +73,7 @@ export function ModelPicker({ thread, label, disabled, openKey }) {
   const close = useCallback(() => { setOpen(false); setQuery(''); }, []);
   const ref = useDismiss(open, close);
   const connection = connections.find(c => c.id === thread.connectionId);
-  const Icon = routeIcon[connection?.route] || Terminal;
+  const Icon = thread.overseer ? OverseerIcon : routeIcon[connection?.route] || Terminal;
   const pick = guard(async (connectionId, model) => { close(); await call('thread:settings', thread.id, { connectionId, model }); });
   return (
     <div className="picker" ref={ref}>
@@ -82,6 +84,12 @@ export function ModelPicker({ thread, label, disabled, openKey }) {
         <div className="popover picker-pop">
           <label className="pick-search"><Search size={14} /><input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Search models or type a model id" /></label>
           <div className="pick-scroll">
+            {!query.trim() ? (
+              <button className={`pick-item overseer-item ${thread.overseer ? 'selected' : ''}`} onClick={guard(async () => { close(); await call('thread:settings', thread.id, { overseer: true }); })}>
+                <span className="option-text"><span className="pick-label"><Mark size={13} /> Overseer</span><span className="option-detail">Chooses the model and effort for each message, and avoids plans near their limit.</span></span>
+                {thread.overseer ? <Check size={14} className="pick-check" /> : null}
+              </button>
+            ) : null}
             {ORDER.map(route => {
               const list = connections.filter(c => c.route === route);
               if (!list.length) return null;

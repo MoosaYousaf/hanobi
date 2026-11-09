@@ -264,6 +264,39 @@ function VoiceSection() {
   );
 }
 
+// The Overseer chooses a model per message. The user picks the router and which models it may use.
+function OverseerSection() {
+  const prefs = useStore(s => s.app.preferences.overseer) || {};
+  const [list, setList] = useState(null);
+  useEffect(() => { call('overseer:candidates').then(setList, toast); }, [prefs.allowPaid]);
+  const setOverseer = patch => guard(() => call('prefs:set', { overseer: { ...prefs, ...patch } }))();
+  // Turning a model on removes it from exclude and adds it to include; turning it off does the opposite.
+  const toggle = c => {
+    const without = key => (prefs[key] || []).filter(x => x !== c.id);
+    setOverseer(c.on ? { exclude: [...without('exclude'), c.id], include: without('include') } : { include: [...without('include'), c.id], exclude: without('exclude') });
+    setList(list.map(x => (x.id === c.id ? { ...x, on: !c.on } : x)));
+  };
+  return (
+    <>
+      <h3>Overseer</h3>
+      <p className="hint">Choose Overseer in the model menu. It picks the model and effort for each message. It keeps the same model while the task stays the same, because a different provider must read the whole conversation again. It avoids a plan at 80% of its limit and stops using it at 90%.</p>
+      <div className="segmented">
+        {[['model', 'Haiku 5.5 + rules'], ['rules', 'Rules only']].map(([id, label]) => <button key={id} className={(prefs.router || 'model') === id ? 'on' : ''} onClick={() => setOverseer({ router: id })}>{label}</button>)}
+      </div>
+      <p className="hint">{(prefs.router || 'model') === 'model' ? 'On a new task, Haiku 5.5 through Claude Code chooses (a small part of your plan, a few seconds). Fixed rules decide when Claude Code is missing or the router is slow.' : 'Fixed rules decide from the message length, words such as "debug" or "design", the workspace, and plan use. No extra model call.'}</p>
+      <p className="hint">An installed CLI is on only after it answered in one of your conversations, because it may not be signed in.</p>
+      <label className="check"><input type="checkbox" checked={!!prefs.allowPaid} onChange={e => setOverseer({ allowPaid: e.target.checked })} /> Allow models that use paid API keys</label>
+      {list?.length ? (
+        <div className="overseer-models">
+          {list.map(c => (
+            <label key={c.id} className="check"><input type="checkbox" checked={c.on} onChange={() => toggle(c)} /> {c.label} <span className="muted">· {c.tier}</span></label>
+          ))}
+        </div>
+      ) : list ? <p className="hint warn">No models are ready. Install Claude Code or Codex, or add a model in Models.</p> : null}
+    </>
+  );
+}
+
 function GeneralPane() {
   const prefs = useStore(s => s.app.preferences);
   const [system, setSystem] = useState(prefs.systemPrompt);
@@ -275,6 +308,7 @@ function GeneralPane() {
       <div className="segmented">
         {['dark', 'light', 'system'].map(t => <button key={t} className={prefs.theme === t ? 'on' : ''} onClick={() => setPref({ theme: t })}>{t[0].toUpperCase() + t.slice(1)}</button>)}
       </div>
+      <OverseerSection />
       <h3>Suggested replies</h3>
       <label className="check"><input type="checkbox" checked={!!prefs.suggestReplies} onChange={e => setPref({ suggestReplies: e.target.checked })} /> Suggest the next message for every model</label>
       <p className="hint">Claude Code makes one suggestion of its own, at no extra cost, when it has enough context. With this on, every model makes up to three: each reply makes one extra short request to the same model. API models use tokens; Claude Code and Codex use a little of your plan; GitHub Copilot uses one request of your plan unless the model is free on it. Suggestions show as buttons above the message box, and the first shows in the empty box. While you type, the rest of a matching suggestion or earlier message shows in gray. Press Tab to use it.</p>

@@ -225,7 +225,14 @@ app.whenReady().then(async () => {
     await click(win, '.chip[title="Choose a model"]');
     await until(win, `!!document.querySelector('.picker-pop .pick-route-label')`, 'model picker opens');
     await shot(win, '2-picker');
-    await win.webContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
+    // Overseer: the first item of the model menu. It names the composer chip and hides the effort menu; a model picked by hand turns it off.
+    await click(win, '.picker-pop .overseer-item');
+    await until(win, `document.querySelector('.chip[title="Choose a model"] .chip-label')?.textContent.startsWith('Overseer · ') && !document.querySelector('[aria-label="Effort"]') && document.querySelector('.composer textarea').placeholder.startsWith('Message Overseer')`, 'Overseer turns on');
+    await click(win, '.chip[title="Choose a model"]');
+    await until(win, `document.querySelector('.picker-pop .overseer-item.selected')`, 'Overseer shows as selected');
+    await shot(win, '2a-overseer');
+    await win.webContents.executeJavaScript(`[...document.querySelectorAll('.picker-pop .pick-item:not(.overseer-item)')].find(b => !b.disabled && !b.classList.contains('muted')).click()`);
+    await until(win, `!document.querySelector('.chip[title="Choose a model"] .chip-label')?.textContent.startsWith('Overseer')`, 'a model picked by hand turns Overseer off');
     await click(win, '.sidebar-foot .foot-btn:last-child');
     await until(win, `!!document.querySelector('.settings .row')`, 'settings opens');
     await clickText(win, '.settings .btn', 'Add a provider');
@@ -241,7 +248,8 @@ app.whenReady().then(async () => {
     await until(win, `document.querySelectorAll('.preset-grid .preset').length === 5`, 'connector presets');
     await shot(win, '4-connectors');
     await clickText(win, '.settings-nav button', 'General');
-    await until(win, `[...document.querySelectorAll('.settings .segmented button')].map(b => b.textContent).join() === 'Dark,Light,System' && !document.querySelector('.palette')`, 'appearance has dark, light, and system and no palettes');
+    await until(win, `[...document.querySelectorAll('.settings .segmented')][0] && [...document.querySelectorAll('.settings .segmented')][0].textContent === 'DarkLightSystem' && !document.querySelector('.palette')`, 'appearance has dark, light, and system and no palettes');
+    await until(win, `[...document.querySelectorAll('.settings h3')].some(h => h.textContent === 'Overseer') && document.querySelectorAll('.overseer-models .check').length > 0`, 'Overseer settings list the models it may use');
     await clickText(win, '.settings .segmented button', 'Dark');
     await until(win, `getComputedStyle(document.body).backgroundColor === 'rgb(0, 0, 0)'`, 'dark theme is true black');
     await clickText(win, '.settings .segmented button', 'Light');
@@ -329,7 +337,7 @@ app.whenReady().then(async () => {
     })()`);
     await until(win, `(${JSON.stringify(listed)}).at(-1) === [...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row .thread-title')][0].textContent`, 'dragging a conversation reorders the list');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, ghost-text suggestion, inline completion, suggestion chips, / commands, @ file mentions, saved messages, live reply with approval, elapsed time and background work, themed access and effort pickers, new conversation, model picker, settings, connector connect and disconnect, connector presets, dark and light themes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, Mermaid diagrams, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
+    process.stdout.write('Smoke passed: home, ghost-text suggestion, inline completion, suggestion chips, / commands, @ file mentions, saved messages, live reply with approval, elapsed time and background work, themed access and effort pickers, new conversation, model picker, settings, connector connect and disconnect, Overseer, connector presets, dark and light themes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, Mermaid diagrams, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
     app.exit(0);
   } catch (error) {
     if (errors.length) console.error('Console errors:\n' + errors.join('\n')); process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }

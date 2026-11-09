@@ -276,7 +276,7 @@ export function Composer({ thread, workspace, modelLabel }) {
           {rest ? <div className="ghost-mirror" aria-hidden="true"><span>{text}</span><span className="ghost-rest">{rest}</span></div> : null}
           <textarea
             ref={input} autoFocus rows={1} value={text} className={ghost ? 'ghost' : ''}
-            placeholder={ghost || `Message ${modelLabel.split(' · ')[0]}… (/ for commands, @ for files)`}
+            placeholder={ghost || `Message ${thread.overseer ? 'Overseer' : modelLabel.split(' · ')[0]}… (/ for commands, @ for files)`}
             aria-autocomplete="list" aria-expanded={!!menu}
             onChange={e => { update(e.target.value); follow(e.target.value, e.target.selectionStart); }}
             onSelect={e => { setAtEnd(e.target.selectionStart === e.target.value.length); if (menu || e.target.value.includes('@') || e.target.value.startsWith('/')) follow(e.target.value, e.target.selectionStart); }}
@@ -298,8 +298,9 @@ export function Composer({ thread, workspace, modelLabel }) {
           <OptionPicker options={modes} value={mode.id} disabled={running} onPick={onAccess} title={mode.detail} danger={mode.danger} label="Access mode" openKey={`${thread.id}:access`} />
         ) : null}
         <span className="grow" />
-        <ModelPicker thread={thread} label={modelLabel} disabled={running} openKey={`${thread.id}:model`} />
-        {preset?.efforts?.length > 1 ? (
+        <ModelPicker thread={thread} label={thread.overseer ? `Overseer · ${modelLabel.split(' · ')[0]}` : modelLabel} disabled={running} openKey={`${thread.id}:model`} />
+        {/* The Overseer sets the effort of each turn itself. */}
+        {preset?.efforts?.length > 1 && !thread.overseer ? (
           <OptionPicker options={preset.efforts.map(e => ({ id: e, label: e ? cap(e) : 'Default effort' }))} value={thread.effort} disabled={running} onPick={effort => setting({ effort })} title="Effort" label="Effort" align="end" openKey={`${thread.id}:effort`} />
         ) : null}
         <UsageRing thread={thread} preset={preset} />

@@ -205,6 +205,9 @@ function EditBox({ message, onSave, onCancel }) {
   );
 }
 
+// How the Overseer chose the model of a reply.
+const ROUTE_BY = { same: 'Same kind of task, so the model stayed the same (no router call).', router: 'The router model chose this model.', rules: 'Orin\'s fixed rules chose this model.' };
+
 export const Message = memo(function Message({ message, modelLabel, onBranch, onRewind, onEdit, busy }) {
   const [menu, setMenu] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -225,7 +228,8 @@ export const Message = memo(function Message({ message, modelLabel, onBranch, on
   }
   return (
     <article className="msg assistant">
-      <div className="msg-meta">{modelLabel}{message.duration ? ` · ${elapsed(message.duration)}` : ''}{message.stopped ? ' · stopped' : ''}</div>
+      <div className="msg-meta">{modelLabel}{message.route?.effort ? ` · ${message.route.effort}` : ''}{message.duration ? ` · ${elapsed(message.duration)}` : ''}{message.stopped ? ' · stopped' : ''}
+        {message.route ? <span className="msg-route" title={ROUTE_BY[message.route.by]}> · Overseer: {message.route.reason}</span> : null}</div>
       <Parts parts={message.parts} />
       {message.error ? <div className="msg-error"><CircleAlert size={14} /> {message.error}</div> : null}
       {!message.parts.length && !message.error ? <div className="muted">No response.</div> : null}

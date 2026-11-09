@@ -12,6 +12,7 @@ const projects = require('./projects');
 const openai = require('./providers/openai');
 const { contextWindow } = require('./providers/usage');
 const { attachmentBlock, mediaType } = require('./files');
+const overseer = require('./overseer');
 
 const UPDATE_MS = 60;
 
@@ -54,8 +55,8 @@ function validAnswers(questions, answers) {
 }
 
 class Runner {
-  constructor({ store, secrets, mcp, send, files }) {
-    Object.assign(this, { store, secrets, mcp, send, files });
+  constructor({ store, secrets, mcp, send, files, limits }) {
+    Object.assign(this, { store, secrets, mcp, send, files, limits });
     this.runs = new Map(); // threadId -> { controller, draft }
     this.approvals = new Map(); // approvalId -> resolve
   }
@@ -91,19 +92,48 @@ class Runner {
   }
 
   // Changing provider drops the CLI session; the next turn replays the transcript instead.
+  // overseer: true lets the Overseer choose the model of each turn; choosing a model by hand turns it off.
+  // baseMode keeps the access mode the user chose, so a route through a provider without that mode does not lose it.
   setThreadSettings(threadId, next) {
     const thread = this.store.thread(threadId);
     if (this.runs.has(threadId)) throw new Error('Wait for the current reply to finish.');
     const connectionId = next.connectionId ?? thread.connectionId;
     const { connection, preset } = this.resolve(connectionId);
-    const available = modesFor(preset);
-    const mode = available.some(m => m.id === (next.mode ?? thread.mode)) ? (next.mode ?? thread.mode) : available[0].id;
+    const mode = mapMode(next.mode ?? thread.baseMode ?? thread.mode, preset);
     const effort = preset.efforts.includes(next.effort ?? thread.effort) ? (next.effort ?? thread.effort) : '';
     const settings = validateSettings(connection, { model: next.model ?? thread.model, effort, mode });
     const switched = connectionId !== thread.connectionId;
-    this.store.update(threadId, { connectionId, ...settings, ...(switched ? { sessionId: null, replay: thread.messages.length > 0 } : {}) });
-    this.store.data.preferences.lastModel = { connectionId, ...settings };
+    const overseerOn = 'overseer' in next ? !!next.overseer : 'model' in next || 'connectionId' in next ? false : !!thread.overseer;
+    this.store.update(threadId, { connectionId, ...settings, baseMode: 'mode' in next ? settings.mode : thread.baseMode ?? settings.mode, overseer: overseerOn,
+      ...(overseerOn !== !!thread.overseer ? { route: null } : {}), ...(switched ? { sessionId: null, replay: thread.messages.length > 0 } : {}) });
+    this.store.data.preferences.lastModel = { connectionId, ...settings, overseer: overseerOn };
     return this.store.thread(threadId);
+  }
+
+  // The models the Overseer may choose from, with the user's exclusions applied (or all, for the settings list).
+  overseerCandidates({ all = false } = {}) {
+    const prefs = this.store.data.preferences.overseer || {};
+    const used = new Set(this.store.data.threads.flatMap(t => t.messages.filter(m => m.role === 'assistant' && !m.error && m.connectionId).map(m => m.connectionId)));
+    return overseer.candidates({ connections: this.connections(), modelsOf: id => this.models(id), presets, prefs, used, all });
+  }
+  // Picks this turn's model and moves the thread to it. Returns the route, or null when the thread keeps its model.
+  async route(threadId, { text, workspace, files, history, signal }) {
+    const thread = this.store.thread(threadId);
+    const prefs = this.store.data.preferences.overseer || {};
+    const list = this.overseerCandidates();
+    if (!list.length) return null;
+    const router = this.connections().find(c => c.id === overseer.ROUTER.connectionId && c.ready);
+    const complete = router ? (prompt, routerSignal) => cli.complete({ preset: presets[router.preset], model: overseer.ROUTER.model, prompt, signal: routerSignal }) : null;
+    const route = await overseer.decide({ text, workspaceKind: workspace.kind, files, previous: thread.route, list, prefs, signal, complete,
+      readLimits: name => (this.limits?.supports(name) ? this.limits.get(name) : Promise.resolve(null)) });
+    if (!route) return null;
+    const { connection, preset } = this.resolve(route.connectionId);
+    const switched = route.connectionId !== thread.connectionId;
+    const settings = validateSettings(connection, { model: route.model, effort: preset.efforts.includes(route.effort) ? route.effort : '', mode: mapMode(thread.baseMode ?? thread.mode, preset) });
+    this.store.update(threadId, { connectionId: route.connectionId, ...settings, route, ...(switched ? { sessionId: null, replay: history.length > 0 } : {}) });
+    this.send('thread-changed', { threadId });
+    this.send('changed');
+    return route;
   }
 
   // Validation throws synchronously so the caller sees it; the run itself continues in the background.
@@ -138,6 +168,12 @@ class Runner {
   }
 
   async execute({ threadId, thread, workspace, connection, preset, history, text, attached = [], draft, controller, userId }) {
+    // The Overseer picks this turn's model before anything runs. A failed route keeps the current model.
+    let route = null;
+    if (thread.overseer) {
+      route = await this.route(threadId, { text, workspace, files: attached.length, history, signal: controller.signal }).catch(() => null);
+      if (route) ({ connection, preset } = this.resolve((thread = this.store.thread(threadId)).connectionId));
+    }
     // A file checkpoint before the model acts makes "Rewind code" possible. Folders outside Git have none.
     // Chats and projects are not code folders, so they get no checkpoints.
     const chat = workspace.kind === 'chats' || workspace.kind === 'project';
@@ -153,7 +189,7 @@ class Runner {
       const startedAt = this.runs.get(threadId)?.startedAt;
       this.runs.delete(threadId);
       for (const [id, entry] of this.approvals) if (entry.threadId === threadId) this.answer(id, null);
-      const saved = message && this.store.append(threadId, { role: 'assistant', connectionId: thread.connectionId, model: thread.model, ...(draft.suggestions.length ? { suggestions: draft.suggestions } : {}), ...(startedAt ? { duration: Date.now() - startedAt } : {}), ...(draft.usage ? { usage: { used: draft.usage.used, window: draft.usage.window || contextWindow(thread.model) } } : {}), ...message });
+      const saved = message && this.store.append(threadId, { role: 'assistant', connectionId: thread.connectionId, model: thread.model, ...(route ? { route: { reason: route.reason, by: route.by, effort: thread.effort } } : {}), ...(draft.suggestions.length ? { suggestions: draft.suggestions } : {}), ...(startedAt ? { duration: Date.now() - startedAt } : {}), ...(draft.usage ? { usage: { used: draft.usage.used, window: draft.usage.window || contextWindow(thread.model) } } : {}), ...message });
       this.send('thread-changed', { threadId });
       this.send('run-state', { threadId, running: false, error: message?.error });
       return saved;
@@ -297,4 +333,13 @@ class Runner {
   startedAt(threadId) { return this.runs.get(threadId)?.startedAt || null; }
 }
 
-module.exports = { Runner, ASK_TOOL, WRITE_TOOL, normalizeQuestions, validAnswers };
+// The closest access mode a provider has to the one the user chose. CLIs and API models have different modes.
+function mapMode(mode, preset) {
+  const available = modesFor(preset);
+  if (available.some(m => m.id === mode)) return mode;
+  if (mode === 'full' && available.some(m => m.id === 'full')) return 'full';
+  if (preset.kind === 'cli') return available.find(m => m.id === (mode === 'ask' ? 'default' : 'auto'))?.id || available[0].id;
+  return available[0].id;
+}
+
+module.exports = { Runner, mapMode, ASK_TOOL, WRITE_TOOL, normalizeQuestions, validAnswers };

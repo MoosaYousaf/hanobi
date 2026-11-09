@@ -68,6 +68,7 @@
 html, body, #root { height: 100%; margin: 0; }
 body { font: 13px/1.45 var(--font); color: var(--text); background: var(--bg); -webkit-font-smoothing: antialiased; overflow: hidden; }
 button, input, textarea, select { font: inherit; color: inherit; }
+input[type="checkbox"], input[type="radio"], input[type="range"] { accent-color: var(--accent); }
 button { cursor: default; background: none; border: 0; padding: 0; }
 button:disabled { opacity: .45; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 6px; }
@@ -636,3 +637,9 @@ kbd { font: 500 11px var(--mono); padding: 1px 5px; border: 1px solid var(--bord
 @keyframes breathe { 0%, 100% { box-shadow: 0 0 0 0 var(--glow); opacity: 1; } 50% { box-shadow: 0 0 0 5px transparent; opacity: .6; } }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, -10px) scale(.96); } }
 @media (prefers-reduced-motion: reduce) { .btn, .icon-btn, .send, .thread-row { transform: none !important; } }
+
+/* Overseer */
+.overseer-item { align-items: flex-start; border-bottom: 1px solid var(--border); border-radius: 0; margin-bottom: 4px; padding-bottom: 9px; }
+.overseer-item .pick-label { display: inline-flex; align-items: center; gap: 6px; font-weight: 650; }
+.msg-route { color: var(--text-3); }
+.overseer-models { display: grid; gap: 2px; margin-top: 6px; }

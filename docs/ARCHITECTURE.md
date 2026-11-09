@@ -10,6 +10,7 @@ electron/main.js
   ├─ store.js          JSON data file, coalesced atomic writes, v1 migration, corrupt-file recovery
   ├─ secrets.js        safeStorage (Keychain) encrypted keys, MCP env/headers, OAuth tokens
   ├─ runner.js         one run per conversation: adapter choice, live draft updates, tool approval
+  │   ├─ overseer.js   Overseer: per-turn choice of connection, model, and effort (rules, router model, plan limits)
   │   ├─ draft.js      the only stream reducer: events → message parts
   │   └─ providers/
   │       ├─ catalog.js     presets for every route, access modes, settings validation
@@ -59,6 +60,10 @@ Before each run in a code workspace, `git.snapshot` copies the real index (with 
 ## Approvals
 
 `Runner.ask` is the one approval flow. API runs call it before each MCP tool call. Claude Code always runs with `--input-format stream-json --permission-prompt-tool stdio`. In **Ask first** the CLI sends each permission prompt as a `can_use_tool` control request on stdout. Orin answers with a `control_response` on stdin, and closes stdin after the `result` event. In the other modes Orin denies permission prompts, as the CLI does when nobody can answer. In **Ask first**, Codex runs `codex app-server` with `approvalPolicy: untrusted` and the workspace-write sandbox. Orin answers `item/commandExecution/requestApproval` and `item/fileChange/requestApproval` with `accept` or `decline`. Other server requests get a JSON-RPC error. Thread ids are the same as in `codex exec`, so a thread can change mode and still resume. In **Ask first**, Copilot runs `copilot --acp` with allow-all off (Orin turns it off if a saved setting has it on). Orin declares no fs or terminal capability, so Copilot uses its own tools. Orin answers `session/request_permission` with the `allow_once` or `reject_once` option. A resumed thread uses `session/load`; Orin ignores the replayed updates. ACP session ids are the same as `--session-id`. A Deny makes Copilot end the turn ("Info: Operation cancelled by user"). Copilot sends such notices as message chunks, so Orin puts each one in its own paragraph. **Always allow** adds the tool name to the thread's `allowedTools`.
+
+## Overseer
+
+A thread with `overseer: true` gets its model chosen before each turn (`Runner.route`, `electron/overseer.js`). Candidates are the ready connections' models without CLI defaults; paid-key connections only with `allowPaid`; a CLI only after it gave a reply without an error in some thread, or when the user included its model (an installed CLI may not be signed in). Each model has a tier (`top`, `mid`, `fast`) from the `TIERS` table or from words in its id; local models are always `fast`. `classify` calls a message `quick`, `normal`, or `hard`. When the kind matches the previous route and that model is under the soft limit (80%), the thread stays (`by: 'same'`, no model call). Otherwise the router model (Haiku 5.5 through `cli.complete`, 10 s limit) returns `{id, effort, reason}` as JSON; an unknown id, bad JSON, an error, or the setting `router: 'rules'` falls back to `byRules`: plans under the soft limit, the nearest tier (stronger first), the previous connection, subscriptions before local before keys, then the plan with the most left. Plans at the hard limit (90%) are out. The route moves the thread like a model change (another connection replays the transcript), keeps the user's access mode in `baseMode` (`mapMode` gives the closest mode of each provider), and is saved on the thread (`route`) and on the reply (`route: { reason, by, effort }`). Choosing a model by hand turns the Overseer off.
 
 ## Adding a provider
 

@@ -299,6 +299,10 @@ const handlers = {
     const allowed = ['theme', 'systemPrompt']; for (const k of allowed) if (k in patch) store.data.preferences[k] = String(patch[k]).slice(0, 20000);
     if ('suggestReplies' in patch) store.data.preferences.suggestReplies = !!patch.suggestReplies;
     if ('notify' in patch) store.data.preferences.notify = !!patch.notify;
+    if ('overseer' in patch) {
+      const o = { ...(store.data.preferences.overseer || {}), ...patch.overseer };
+      store.data.preferences.overseer = { router: o.router === 'rules' ? 'rules' : 'model', allowPaid: !!o.allowPaid, ...Object.fromEntries(['exclude', 'include'].map(k => [k, (Array.isArray(o[k]) ? o[k] : []).map(String).slice(0, 500)])) };
+    }
     if ('voice' in patch) {
       const voice = { ...(store.data.preferences.voice || {}), ...patch.voice };
       store.data.preferences.voice = { language: /^[a-z]{2,3}$/.test(voice.language || '') ? voice.language : 'en' };
@@ -381,6 +385,7 @@ const handlers = {
   'voice:stop': () => speech.stop(),
   'voice:cancel': () => speech.cancel(),
   // Plan limits of the conversation's CLI subscription, or null for API and local models.
+  'overseer:candidates': () => runner.overseerCandidates({ all: true }).map(({ id, on, label, tier, route }) => ({ id, on, label, tier, route })),
   'limits:get': (connectionId, force) => { const cli = cliOf(connectionId); return cli ? limits.get(cli, { force: !!force }) : null; },
   'update:check': () => checkUpdate(),
   'update:open': () => { if (update?.url && /^https:\/\/github\.com\//.test(update.url)) return shell.openExternal(update.url); },
@@ -403,7 +408,7 @@ app.whenReady().then(() => {
   // Smoke runs give fixed readings instead of the user's real accounts.
   const fixture = process.env.ORIN_LIMITS_FIXTURE ? JSON.parse(process.env.ORIN_LIMITS_FIXTURE) : null;
   limits = new Limits({ cliPath, ...(fixture ? { sources: Object.fromEntries(Object.entries(fixture).map(([cli, reading]) => [cli, async () => reading])) } : {}), onChange: (cli, reading) => send('limits', { cli, ...reading }) });
-  runner = new Runner({ store, secrets, mcp, send, files });
+  runner = new Runner({ store, secrets, mcp, send, files, limits });
   nativeTheme.themeSource = ['light', 'dark'].includes(store.data.preferences.theme) ? store.data.preferences.theme : 'system';
   // A general folder for chats that do not belong to a project.
   const general = path.join(app.getPath('userData'), 'Chats');

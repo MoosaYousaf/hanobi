@@ -13,7 +13,7 @@ const slug = text => text.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|
 class OAuthProvider {
   constructor(secrets, id) { this.secrets = secrets; this.key = `mcp-oauth:${id}`; this.interactive = false; this.pendingUrl = null; }
   get redirectUrl() { return REDIRECT; }
-  get clientMetadata() { return { client_name: 'Hanobi', redirect_uris: [REDIRECT], grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], token_endpoint_auth_method: 'none' }; }
+  get clientMetadata() { return { client_name: 'Orin', redirect_uris: [REDIRECT], grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], token_endpoint_auth_method: 'none' }; }
   read() { return this.secrets.get(this.key) || {}; }
   write(patch) { this.secrets.set(this.key, { ...this.read(), ...patch }); }
   clientInformation() { return this.read().client; }
@@ -51,7 +51,7 @@ class Mcp {
     if (this.live.has(id)) return this.live.get(id);
     const server = this.config(id);
     const provider = server.oauth ? new OAuthProvider(this.secrets, id) : null;
-    const client = new Client({ name: 'hanobi', version: '1.0.0' });
+    const client = new Client({ name: 'orin', version: '1.0.0' });
     const transport = this.transport(server, provider);
     this.setStatus(id, { state: 'connecting' });
     try {
@@ -89,7 +89,7 @@ class Mcp {
         const url = new URL(req.url, REDIRECT);
         if (url.pathname !== '/callback') { res.writeHead(404).end(); return; }
         const value = url.searchParams.get('code');
-        res.writeHead(200, { 'Content-Type': 'text/html' }).end(`<body style="font:15px -apple-system;padding:40px">${value ? 'Hanobi is connected. You can close this tab.' : 'Sign-in failed. Return to Hanobi and try again.'}</body>`);
+        res.writeHead(200, { 'Content-Type': 'text/html' }).end(`<body style="font:15px -apple-system;padding:40px">${value ? 'Orin is connected. You can close this tab.' : 'Sign-in failed. Return to Orin and try again.'}</body>`);
         listener.close();
         value ? resolve(value) : reject(new Error(url.searchParams.get('error_description') || 'Sign-in was cancelled.'));
       });
@@ -98,7 +98,7 @@ class Mcp {
       setTimeout(() => { listener.close(); reject(new Error('Sign-in timed out.')); }, 5 * 60 * 1000).unref();
     });
     try {
-      await new Client({ name: 'hanobi', version: '1.0.0' }).connect(transport);
+      await new Client({ name: 'orin', version: '1.0.0' }).connect(transport);
     } catch (error) {
       if (!(error instanceof UnauthorizedError) || !provider.pendingUrl) throw error;
       this.setStatus(id, { state: 'authorizing' });

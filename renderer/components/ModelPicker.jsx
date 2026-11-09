@@ -25,8 +25,8 @@ export function useOpenOn(key, open) {
   useEffect(() => {
     if (!key) return;
     const onOpen = e => { if (e.detail === key) open(); };
-    window.addEventListener('hanobi-picker', onOpen);
-    return () => window.removeEventListener('hanobi-picker', onOpen);
+    window.addEventListener('orin-picker', onOpen);
+    return () => window.removeEventListener('orin-picker', onOpen);
   }, [key, open]);
 }
 

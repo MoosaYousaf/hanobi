@@ -18,11 +18,11 @@ async function capture(file, width, height) {
 app.on('window-all-closed', () => {});
 app.whenReady().then(async () => {
   const svg = fs.readFileSync(path.join(root, 'build/icon.svg'), 'utf8');
-  const page = path.join(app.getPath('temp'), 'hanobi-icon.html');
+  const page = path.join(app.getPath('temp'), 'orin-icon.html');
   fs.writeFileSync(page, `<body style="margin:0;background:transparent">${svg.replace('width="1024" height="1024"', 'width="1024" height="1024" style="display:block"')}</body>`);
   const master = await capture(page, 1024, 1024);
   fs.writeFileSync(path.join(root, 'build/icon.png'), master.toPNG());
-  const set = path.join(app.getPath('temp'), 'hanobi.iconset');
+  const set = path.join(app.getPath('temp'), 'orin.iconset');
   fs.rmSync(set, { recursive: true, force: true });
   fs.mkdirSync(set);
   for (const size of [16, 32, 128, 256, 512]) {

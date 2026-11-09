@@ -9,18 +9,6 @@ import { Dialog } from './components/Dialog.jsx';
 // Settings is opened rarely, so it loads on first use.
 const Settings = lazy(() => import('./components/Settings.jsx'));
 
-// Named palettes live in styles.css. A custom palette sets the accent tokens from one color.
-function applyPalette(palette, accent) {
-  const root = document.documentElement;
-  root.dataset.palette = palette;
-  for (const token of ['--accent', '--accent-hover', '--accent-soft']) root.style.removeProperty(token);
-  if (palette !== 'custom' || !/^#[0-9a-f]{6}$/i.test(accent || '')) return;
-  const [r, g, b] = [1, 3, 5].map(i => parseInt(accent.slice(i, i + 2), 16));
-  root.style.setProperty('--accent', accent);
-  root.style.setProperty('--accent-hover', `rgb(${r * .86 | 0}, ${g * .86 | 0}, ${b * .86 | 0})`);
-  root.style.setProperty('--accent-soft', `rgba(${r}, ${g}, ${b}, .12)`);
-}
-
 const MIN_PANE = 340; // px
 
 // Threads side by side. Each divider resizes its two neighbours; a double click makes all panes equal.
@@ -68,9 +56,6 @@ export function App() {
   const panel = useStore(s => s.ui.panel);
   const settings = useStore(s => s.ui.settings);
   const toast = useStore(s => s.toast);
-  const palette = useStore(s => s.app?.preferences.palette || 'hanobi');
-  const accent = useStore(s => s.app?.preferences.accent);
-  useEffect(() => applyPalette(palette, accent), [palette, accent]);
   const focus = useStore(s => s.ui.focus);
   // Escape leaves focus mode unless a dialog, menu, or message edit is open.
   useEffect(() => {

@@ -1,4 +1,4 @@
-// Every way Hanobi can reach a model. A "connection" is one configured instance of a preset.
+// Every way Orin can reach a model. A "connection" is one configured instance of a preset.
 // route: subscription = an installed CLI with its own sign-in; key = API key; local = a model server on this Mac.
 const EFFORTS = ['', 'low', 'medium', 'high', 'xhigh', 'max'];
 
@@ -27,7 +27,7 @@ const presets = {
 };
 
 // CLI agents control their own tools; API chats ask before each MCP tool call unless set to allow.
-// A mode with asks: true needs a CLI that sends its permission prompts to Hanobi.
+// A mode with asks: true needs a CLI that sends its permission prompts to Orin.
 const modes = {
   cli: [
     { id: 'ask', label: 'Ask first', detail: 'Ask in this view before each action the CLI’s rules do not allow.', asks: true },

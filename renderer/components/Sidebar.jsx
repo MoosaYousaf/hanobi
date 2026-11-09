@@ -90,7 +90,7 @@ function Workspace({ workspace, threads }) {
   const running = useStore(s => s.app.running);
   const shown = all ? threads : threads.slice(0, LIMIT);
   const ids = useMemo(() => threads.map(t => t.id), [threads.map(t => t.id).join()]);
-  const remove = guard(async () => { if (await askConfirm({ title: `Remove “${workspace.name}”?`, message: `Its ${threads.length} conversations are removed from Hanobi. The files on disk stay.`, confirmLabel: 'Remove', danger: true })) await call('workspace:remove', workspace.id); });
+  const remove = guard(async () => { if (await askConfirm({ title: `Remove “${workspace.name}”?`, message: `Its ${threads.length} conversations are removed from Orin. The files on disk stay.`, confirmLabel: 'Remove', danger: true })) await call('workspace:remove', workspace.id); });
   return (
     <section className="ws">
       <div className="ws-head">
@@ -167,7 +167,7 @@ export function Sidebar() {
         <button className="foot-btn" onClick={() => setUi({ settings: 'models' })}>
           <SettingsIcon size={15} /> Settings
         </button>
-        {update?.newer ? <button className="foot-btn update" onClick={() => setUi({ settings: 'general' })}>Hanobi {update.latest} is available</button> : null}
+        {update?.newer ? <button className="foot-btn update" onClick={() => setUi({ settings: 'general' })}>Orin {update.latest} is available</button> : null}
       </div>
     </aside>
   );

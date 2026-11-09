@@ -8,7 +8,7 @@ let before = '', stopAsked = false;
 const setVoice = patch => set(s => ({ voice: { ...s.voice, ...patch } }));
 const join = (text, words) => (!words ? text : text && !/\s$/.test(text) ? `${text} ${words}` : text + words);
 
-window.hanobi.on('voice', event => {
+window.orin.on('voice', event => {
   const { state, threadId } = getState().voice;
   if (state !== 'listening' && state !== 'transcribing') return;
   if (event.type === 'level') setVoice({ level: event.value });

@@ -1,7 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
-// Skill folders (each with a SKILL.md) that the CLI agents load. Hanobi lists them read-only.
+// Skill folders (each with a SKILL.md) that the CLI agents load. Orin lists them read-only.
 async function skills(cwd) {
   const home = process.env.HOME || '';
   const locations = [

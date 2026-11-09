@@ -1,5 +1,5 @@
 {
-  "name": "hanobi",
+  "name": "orin",
   "version": "0.6.0",
   "private": true,
   "description": "A lightweight desktop harness for any LLM: subscriptions, API keys, local models, and MCP connectors. Runs on macOS 12+.",
@@ -28,8 +28,8 @@
     "vite": "8.3.5"
   },
   "build": {
-    "appId": "dev.hanobi.app",
-    "productName": "Hanobi",
+    "appId": "dev.orin.app",
+    "productName": "Orin",
     "files": [
       "electron/**/*",
       "dist/renderer/**/*",
@@ -43,11 +43,11 @@
       ],
       "minimumSystemVersion": "12.0",
       "extendInfo": {
-        "NSDownloadsFolderUsageDescription": "Hanobi accesses project folders you choose in Downloads so your coding agent can read and edit their files.",
-        "NSDocumentsFolderUsageDescription": "Hanobi accesses project folders you choose in Documents so your coding agent can read and edit their files.",
-        "NSDesktopFolderUsageDescription": "Hanobi accesses project folders you choose on Desktop so your coding agent can read and edit their files.",
-        "NSMicrophoneUsageDescription": "Hanobi uses the microphone for voice input. Speech is turned into text on this Mac and is not sent anywhere.",
-        "NSSpeechRecognitionUsageDescription": "Hanobi turns your speech into text on this Mac for voice input. Audio is not sent anywhere."
+        "NSDownloadsFolderUsageDescription": "Orin accesses project folders you choose in Downloads so your coding agent can read and edit their files.",
+        "NSDocumentsFolderUsageDescription": "Orin accesses project folders you choose in Documents so your coding agent can read and edit their files.",
+        "NSDesktopFolderUsageDescription": "Orin accesses project folders you choose on Desktop so your coding agent can read and edit their files.",
+        "NSMicrophoneUsageDescription": "Orin uses the microphone for voice input. Speech is turned into text on this Mac and is not sent anywhere.",
+        "NSSpeechRecognitionUsageDescription": "Orin turns your speech into text on this Mac for voice input. Audio is not sent anywhere."
       },
       "icon": "build/icon.icns"
     },
@@ -57,8 +57,8 @@
     },
     "extraResources": [
       {
-        "from": "dist/native/hanobi-speech",
-        "to": "hanobi-speech"
+        "from": "dist/native/orin-speech",
+        "to": "orin-speech"
       }
     ]
   },

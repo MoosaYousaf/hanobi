@@ -17,7 +17,7 @@ const { Runner, ASK_TOOL, validAnswers } = require('../electron/runner');
 const tmp = prefix => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 
 test('store persists threads, and a branch ends before the chosen user message', () => {
-  const root = tmp('hanobi-store-');
+  const root = tmp('orin-store-');
   try {
     const file = path.join(root, 'data.json');
     const store = new Store(file);
@@ -36,7 +36,7 @@ test('store persists threads, and a branch ends before the chosen user message',
 });
 
 test('a corrupt data file is kept aside and the app starts empty', () => {
-  const root = tmp('hanobi-corrupt-');
+  const root = tmp('orin-corrupt-');
   try {
     const file = path.join(root, 'data.json');
     fs.writeFileSync(file, '{"version": 2, "threads": [');
@@ -107,7 +107,7 @@ test('Claude Code ask mode: the prompt is a stdin message, and approval prompts 
   assert.deepEqual(args.slice(args.indexOf('--input-format'), args.indexOf('--input-format') + 4), ['--input-format', 'stream-json', '--permission-prompt-tool', 'stdio']);
   assert.throws(() => validateSettings({ preset: 'gemini' }, { model: '', mode: 'ask' }), /access mode/);
   // The fake CLI goes in $HOME/.local/bin, which comes first on the search path.
-  const home = tmp('hanobi-home-'), bin = path.join(home, '.local/bin'), savedHome = process.env.HOME;
+  const home = tmp('orin-home-'), bin = path.join(home, '.local/bin'), savedHome = process.env.HOME;
   fs.mkdirSync(bin, { recursive: true });
   fs.copyFileSync(path.join(__dirname, 'fixtures/fake-claude.cjs'), path.join(bin, 'claude'));
   fs.chmodSync(path.join(bin, 'claude'), 0o755);
@@ -157,7 +157,7 @@ test('Claude Code ask mode: the prompt is a stdin message, and approval prompts 
 
 test('Copilot ask mode: ACP permission requests become approvals; a load does not repeat old turns', async () => {
   assert.doesNotThrow(() => validateSettings({ preset: 'copilot' }, { model: '', mode: 'ask' }));
-  const home = tmp('hanobi-home-'), bin = path.join(home, '.local/bin'), savedHome = process.env.HOME;
+  const home = tmp('orin-home-'), bin = path.join(home, '.local/bin'), savedHome = process.env.HOME;
   fs.mkdirSync(bin, { recursive: true });
   fs.copyFileSync(path.join(__dirname, 'fixtures/fake-copilot.cjs'), path.join(bin, 'copilot'));
   fs.chmodSync(path.join(bin, 'copilot'), 0o755);
@@ -193,7 +193,7 @@ test('Copilot ask mode: ACP permission requests become approvals; a load does no
 
 test('Codex ask mode: app-server approval requests become approvals, and a decline stays declined', async () => {
   assert.doesNotThrow(() => validateSettings({ preset: 'codex' }, { model: '', mode: 'ask' }));
-  const home = tmp('hanobi-home-'), bin = path.join(home, '.local/bin'), savedHome = process.env.HOME;
+  const home = tmp('orin-home-'), bin = path.join(home, '.local/bin'), savedHome = process.env.HOME;
   fs.mkdirSync(bin, { recursive: true });
   fs.copyFileSync(path.join(__dirname, 'fixtures/fake-codex.cjs'), path.join(bin, 'codex'));
   fs.chmodSync(path.join(bin, 'codex'), 0o755);
@@ -235,7 +235,7 @@ test('settings validation accepts listed CLI models and any API model id', () =>
 });
 
 test('git works from a repo subfolder with renames and spaces in names', async () => {
-  const root = tmp('hanobi-git-');
+  const root = tmp('orin-git-');
   const run = (...args) => { const r = spawnSync('git', args, { cwd: root, encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr); };
   try {
     run('init', '-q'); run('config', 'user.email', 't@example.com'); run('config', 'user.name', 'T');
@@ -258,7 +258,7 @@ test('git works from a repo subfolder with renames and spaces in names', async (
 });
 
 test('rewind restores workspace files from a checkpoint and leaves the real index and other folders alone', async () => {
-  const root = tmp('hanobi-rewind-');
+  const root = tmp('orin-rewind-');
   const run = (...args) => { const r = spawnSync('git', args, { cwd: root, encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr); return r.stdout; };
   const write = (file, text) => { fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true }); fs.writeFileSync(path.join(root, file), text); };
   const read = file => fs.readFileSync(path.join(root, file), 'utf8');
@@ -283,7 +283,7 @@ test('rewind restores workspace files from a checkpoint and leaves the real inde
     assert.equal(run('ls-files', '--stage'), index);
 
     // The runner rewinds the conversation to just before a user message and drops the CLI session.
-    const store = new Store(path.join(tmp('hanobi-data-'), 'data.json'));
+    const store = new Store(path.join(tmp('orin-data-'), 'data.json'));
     const workspace = store.addWorkspace(sub);
     const thread = store.addThread(workspace.id, { connectionId: 'claude-code', model: '', effort: '', mode: 'auto', sessionId: 's1' });
     store.append(thread.id, { role: 'user', parts: [{ type: 'text', text: 'first' }] });
@@ -303,8 +303,8 @@ test('rewind restores workspace files from a checkpoint and leaves the real inde
 });
 
 test('API models ask questions through the ask_user tool; answers must cover every question', async () => {
-  const store = new Store(path.join(tmp('hanobi-q-'), 'data.json'));
-  const thread = store.addThread(store.addWorkspace(tmp('hanobi-qw-')).id, { connectionId: 'x', model: 'm', effort: '', mode: 'ask' });
+  const store = new Store(path.join(tmp('orin-q-'), 'data.json'));
+  const thread = store.addThread(store.addWorkspace(tmp('orin-qw-')).id, { connectionId: 'x', model: 'm', effort: '', mode: 'ask' });
   const sent = [];
   const runner = new Runner({ store, secrets: {}, mcp: {}, send: (channel, value) => {
     sent.push(channel);
@@ -325,10 +325,10 @@ test('API models ask questions through the ask_user tool; answers must cover eve
 
 test('projects: instructions files for CLIs, documents, and the API context', async () => {
   const projects = require('../electron/projects');
-  const project = { id: 'p', kind: 'project', name: 'Contracts', path: tmp('hanobi-project-'), instructions: 'Answer in plain language.' };
+  const project = { id: 'p', kind: 'project', name: 'Contracts', path: tmp('orin-project-'), instructions: 'Answer in plain language.' };
   projects.writeContext(project);
   for (const name of ['CLAUDE.md', 'AGENTS.md', 'GEMINI.md']) assert.match(fs.readFileSync(path.join(project.path, name), 'utf8'), /Answer in plain language\.[\s\S]*knowledge\//);
-  const src = tmp('hanobi-src-');
+  const src = tmp('orin-src-');
   fs.writeFileSync(path.join(src, 'terms.md'), 'Net 30 payment.');
   fs.writeFileSync(path.join(src, 'scan.pdf'), '%PDF-1.7');
   assert.deepEqual(projects.addFiles(project, [path.join(src, 'terms.md'), path.join(src, 'scan.pdf'), path.join(src, 'terms.md')]), ['terms.md', 'scan.pdf', 'terms 2.md']);
@@ -394,7 +394,7 @@ test('context usage: Claude Code stream, Codex rollout file, Copilot session log
   apply('claude', { type: 'result', session_id: 's', modelUsage: { 'claude-opus-5-5': { contextWindow: 1000000 } } }, draft);
   assert.deepEqual(draft.usage, { used: 1000, window: 1000000 });
 
-  const home = tmp('hanobi-usage-');
+  const home = tmp('orin-usage-');
   const day = path.join(home, 'codex/sessions/2026/10/28');
   fs.mkdirSync(day, { recursive: true });
   const token = (input, output) => JSON.stringify({ type: 'event_msg', payload: { type: 'token_count', info: { last_token_usage: { input_tokens: input, output_tokens: output }, model_context_window: 475000 } } });

@@ -6,7 +6,7 @@ const { toProvider } = require('./transcript');
 const MAX_STEPS = 30;
 function client(baseURL, apiKey) {
   // Local servers ignore the key, but the SDK requires a value.
-  return new OpenAI({ baseURL, apiKey: apiKey || 'not-needed', maxRetries: 2, defaultHeaders: baseURL.includes('openrouter.ai') ? { 'HTTP-Referer': 'https://github.com/MoosaYousaf/hanobi', 'X-Title': 'Hanobi' } : {} });
+  return new OpenAI({ baseURL, apiKey: apiKey || 'not-needed', maxRetries: 2, defaultHeaders: baseURL.includes('openrouter.ai') ? { 'HTTP-Referer': 'https://github.com/MoosaYousaf/hanobi', 'X-Title': 'Orin' } : {} });
 }
 
 // Some servers (GitHub Models) list models at a separate catalog URL instead of {baseURL}/models.

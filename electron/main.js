@@ -10,7 +10,6 @@ const { Runner } = require('./runner');
 const { presets, modes } = require('./providers/catalog');
 const projects = require('./projects');
 
-const PALETTES = ['hanobi', 'gemini', 'chatgpt', 'deepseek', 'custom'];
 const { cliPath } = require('./providers/cli');
 const git = require('./git');
 const github = require('./github');
@@ -20,15 +19,18 @@ const { skills } = require('./skills');
 const commands = require('./commands');
 const desktop = require('./desktop');
 const { Limits } = require('./limits');
+const { migrateFromHanobi } = require('./rename');
 // From package.json, not from Electron: a script started with `electron <file>` reports Electron's version.
 const VERSION = require('../package.json').version;
 
-// `npm start` runs as Hanobi Dev with its own data folder and instance lock, so it opens next to the installed app.
-app.setName(app.isPackaged ? 'Hanobi' : 'Hanobi Dev');
+// `npm start` runs as Orin Dev with its own data folder and instance lock, so it opens next to the installed app.
+app.setName(app.isPackaged ? 'Orin' : 'Orin Dev');
 // Tests and smoke runs use a throwaway data folder.
-if (process.env.HANOBI_USER_DATA) app.setPath('userData', process.env.HANOBI_USER_DATA);
-else if (!app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'Hanobi Dev'));
-// One Hanobi at a time: a second launch shows the open window.
+if (process.env.ORIN_USER_DATA) app.setPath('userData', process.env.ORIN_USER_DATA);
+else if (!app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'Orin Dev'));
+// Data saved under the old name moves to the new folder once, before anything reads it.
+if (!process.env.ORIN_USER_DATA) try { migrateFromHanobi(app.getPath('appData'), app.isPackaged ? 'Hanobi' : 'Hanobi Dev', app.getName()); } catch (error) { console.error('Could not move the Hanobi data folder:', error); }
+// One Orin at a time: a second launch shows the open window.
 if (!app.requestSingleInstanceLock()) app.quit();
 const windows = new Set();
 let store, secrets, mcp, runner, files, speech, limits, attention, update = null, shortcutError = '';
@@ -39,12 +41,12 @@ function send(channel, value) {
   // A finished turn used part of the plan, so its limits are read again.
   if (channel === 'run-state' && !value.running) { const cli = cliOf(store.data.threads.find(t => t.id === value.threadId)?.connectionId); if (cli) limits.get(cli, { force: true }); }
 }
-// The CLI of a connection when Hanobi can read its plan limits, else null.
+// The CLI of a connection when Orin can read its plan limits, else null.
 function cliOf(connectionId) {
   const preset = presets[connectionId] || presets[store.data.connections.find(c => c.id === connectionId)?.preset];
   return preset?.kind === 'cli' && limits.supports(preset.cli) ? preset.cli : null;
 }
-// A reply that ends, or a request that waits, while Hanobi is in the background gets a notification.
+// A reply that ends, or a request that waits, while Orin is in the background gets a notification.
 function noticeFor(channel, value) {
   const thread = value?.threadId && store.data.threads.find(t => t.id === value.threadId);
   if (!thread) return;
@@ -64,7 +66,7 @@ function showWindow(threadId) {
   if (threadId) { const open = () => win.webContents.send('open-thread', threadId); win.webContents.isLoading() ? win.webContents.once('did-finish-load', open) : open(); }
   return win;
 }
-// The global shortcut shows Hanobi from any app, and hides it when it is already in front.
+// The global shortcut shows Orin from any app, and hides it when it is already in front.
 function registerShortcut() {
   globalShortcut.unregisterAll();
   shortcutError = '';
@@ -78,7 +80,7 @@ const changed = () => send('changed');
 // Menu actions that change one window's layout go only to the focused window.
 const focused = action => BrowserWindow.getFocusedWindow()?.webContents.send('menu', action);
 
-const dataFile = () => path.join(app.getPath('userData'), 'hanobi-data.json');
+const dataFile = () => path.join(app.getPath('userData'), 'orin-data.json');
 
 function createWindow() {
   // The first window opens where the last one closed. More windows open with the default size.
@@ -86,7 +88,7 @@ function createWindow() {
   const bounds = first ? desktop.restoreBounds(saved, screen.getAllDisplays()) : {};
   const win = new BrowserWindow({
     width: 1360, height: 880, ...bounds, minWidth: 860, minHeight: 560,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#121212' : '#f6f6f4',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#000000' : '#ffffff',
     titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 18 },
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
@@ -148,17 +150,17 @@ const activeWindow = () => BrowserWindow.getFocusedWindow() || [...windows].find
 const threadFile = (threadId, file) => { const thread = store.thread(threadId); return files.resolve(thread.id, store.workspace(thread.workspaceId).path, file); };
 
 // Runs an HTML snippet with JavaScript on, in its own window. The page has an opaque origin (a data URL),
-// an in-memory session that shares nothing with Hanobi, no preload and no Node.js, and every permission request
+// an in-memory session that shares nothing with Orin, no preload and no Node.js, and every permission request
 // (camera, microphone, location, notifications) is denied. It may load from the internet, so CDN libraries work.
 const MAX_RUN = 1.5 * 1024 * 1024;
 function runHtml(html, title = 'Snippet') {
   html = String(html || '');
   if (Buffer.byteLength(html) > MAX_RUN) throw new Error('The snippet is too large to run (1.5 MB at most).');
-  const ses = session.fromPartition('hanobi-run');
+  const ses = session.fromPartition('orin-run');
   ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   ses.setPermissionCheckHandler(() => false);
   const win = new BrowserWindow({ width: 960, height: 720, title: `Run: ${String(title).slice(0, 80)}`, backgroundColor: nativeTheme.shouldUseDarkColors ? '#1f1f1e' : '#ffffff',
-    webPreferences: { partition: 'hanobi-run', sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: true, webviewTag: false, spellcheck: false } });
+    webPreferences: { partition: 'orin-run', sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: true, webviewTag: false, spellcheck: false } });
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:\/\//.test(url)) shell.openExternal(url); return { action: 'deny' }; });
   win.webContents.on('will-navigate', (event, url) => { event.preventDefault(); if (/^https?:\/\//.test(url)) shell.openExternal(url); });
   win.webContents.on('page-title-updated', event => event.preventDefault());
@@ -168,7 +170,7 @@ function runHtml(html, title = 'Snippet') {
 
 // HTML to PDF with Chromium's printer, in a hidden window with scripts off.
 async function printPdf(html) {
-  const source = path.join(app.getPath('temp'), `hanobi-print-${crypto.randomUUID()}.html`);
+  const source = path.join(app.getPath('temp'), `orin-print-${crypto.randomUUID()}.html`);
   fs.writeFileSync(source, html);
   const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false, contextIsolation: true } });
   try {
@@ -190,7 +192,7 @@ const handlers = {
     const workspace = store.workspace(id);
     if (workspace.kind === 'chats') throw new Error('The Chats list cannot be removed.');
     store.removeWorkspace(id);
-    // A project folder belongs to Hanobi, so it goes with the project. A code folder stays on disk.
+    // A project folder belongs to Orin, so it goes with the project. A code folder stays on disk.
     if (workspace.kind === 'project' && fs.existsSync(projectsRoot()) && workspace.path.startsWith(fs.realpathSync(projectsRoot()) + path.sep)) fs.rmSync(workspace.path, { recursive: true, force: true });
     changed();
   },
@@ -296,15 +298,13 @@ const handlers = {
   'prefs:set': patch => {
     const allowed = ['theme', 'systemPrompt']; for (const k of allowed) if (k in patch) store.data.preferences[k] = String(patch[k]).slice(0, 20000);
     if ('suggestReplies' in patch) store.data.preferences.suggestReplies = !!patch.suggestReplies;
-    if ('palette' in patch) store.data.preferences.palette = PALETTES.includes(patch.palette) ? patch.palette : 'hanobi';
-    if ('accent' in patch && /^#[0-9a-f]{6}$/i.test(patch.accent)) store.data.preferences.accent = patch.accent.toLowerCase();
     if ('notify' in patch) store.data.preferences.notify = !!patch.notify;
     if ('voice' in patch) {
       const voice = { ...(store.data.preferences.voice || {}), ...patch.voice };
       store.data.preferences.voice = { language: /^[a-z]{2,3}$/.test(voice.language || '') ? voice.language : 'en' };
     }
     if ('shortcut' in patch) { store.data.preferences.shortcut = String(patch.shortcut || '').slice(0, 60); registerShortcut(); }
-    // A login item for the development Electron binary would start Electron, not Hanobi.
+    // A login item for the development Electron binary would start Electron, not Orin.
     if ('openAtLogin' in patch && app.isPackaged) app.setLoginItemSettings({ openAtLogin: !!patch.openAtLogin });
     store.save(); if ('theme' in patch) nativeTheme.themeSource = ['light', 'dark'].includes(patch.theme) ? patch.theme : 'system'; changed(); },
   'clis:rescan': () => { for (const p of Object.values(presets)) if (p.cli) cliPath(p.cli, true); changed(); },
@@ -372,10 +372,10 @@ const handlers = {
   'snippet:run': (html, title) => { runHtml(html, title); },
   'files:run': async (threadId, file) => { const full = await threadFile(threadId, file); if (!/\.html?$/i.test(full)) throw new Error('Only HTML files can run.'); runHtml(fs.readFileSync(full, 'utf8'), path.basename(full)); },
   // macOS asks once for the microphone. Returns false when the user said no.
-  // The helper asks macOS for speech permission itself; the microphone permission belongs to Hanobi.
+  // The helper asks macOS for speech permission itself; the microphone permission belongs to Orin.
   'voice:start': async () => {
     const mic = process.platform !== 'darwin' || systemPreferences.getMediaAccessStatus('microphone') === 'granted' || await systemPreferences.askForMediaAccess('microphone');
-    if (!mic) throw new Error('Hanobi cannot use the microphone. Allow it in System Settings → Privacy & Security → Microphone.');
+    if (!mic) throw new Error('Orin cannot use the microphone. Allow it in System Settings → Privacy & Security → Microphone.');
     await speech.start(localeFor(store.data.preferences.voice?.language || 'en', app.getSystemLocale()));
   },
   'voice:stop': () => speech.stop(),
@@ -391,17 +391,17 @@ const handlers = {
 
 app.whenReady().then(() => {
   store = new Store(dataFile());
-  secrets = new Secrets(path.join(app.getPath('userData'), 'hanobi-secrets.json'), safeStorage);
+  secrets = new Secrets(path.join(app.getPath('userData'), 'orin-secrets.json'), safeStorage);
   mcp = new Mcp({ store, secrets, openExternal: url => shell.openExternal(url), onChange: changed });
   files = new Files(path.join(app.getPath('userData'), 'Files'), { printPdf });
-  speech = new Speech({ helper: process.env.HANOBI_SPEECH_HELPER || (app.isPackaged ? path.join(process.resourcesPath, 'hanobi-speech') : path.join(__dirname, '../dist/native/hanobi-speech')), onEvent: event => send('voice', event) });
+  speech = new Speech({ helper: process.env.ORIN_SPEECH_HELPER || (app.isPackaged ? path.join(process.resourcesPath, 'orin-speech') : path.join(__dirname, '../dist/native/orin-speech')), onEvent: event => send('voice', event) });
   // Earlier versions kept Whisper models here for voice input; Apple speech recognition needs none.
   fs.rm(path.join(app.getPath('userData'), 'Models'), { recursive: true, force: true }, () => {});
   // Pages get no device permissions: the speech helper records the microphone, not the renderer.
   session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
   // Smoke runs give fixed readings instead of the user's real accounts.
-  const fixture = process.env.HANOBI_LIMITS_FIXTURE ? JSON.parse(process.env.HANOBI_LIMITS_FIXTURE) : null;
+  const fixture = process.env.ORIN_LIMITS_FIXTURE ? JSON.parse(process.env.ORIN_LIMITS_FIXTURE) : null;
   limits = new Limits({ cliPath, ...(fixture ? { sources: Object.fromEntries(Object.entries(fixture).map(([cli, reading]) => [cli, async () => reading])) } : {}), onChange: (cli, reading) => send('limits', { cli, ...reading }) });
   runner = new Runner({ store, secrets, mcp, send, files });
   nativeTheme.themeSource = ['light', 'dark'].includes(store.data.preferences.theme) ? store.data.preferences.theme : 'system';
@@ -412,7 +412,7 @@ app.whenReady().then(() => {
   if (chats.kind !== 'chats') { chats.kind = 'chats'; store.save(); }
   for (const [name, fn] of Object.entries(handlers)) ipcMain.handle(name, (_event, ...args) => fn(...args));
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: 'Hanobi', submenu: [{ role: 'about' }, { type: 'separator' }, { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => send('menu', 'settings') }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { type: 'separator' }, { role: 'quit' }] },
+    { label: 'Orin', submenu: [{ role: 'about' }, { type: 'separator' }, { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => send('menu', 'settings') }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { type: 'separator' }, { role: 'quit' }] },
     { label: 'File', submenu: [{ label: 'New Conversation', accelerator: 'CmdOrCtrl+N', click: () => send('menu', 'new-thread') }, { label: 'New Window', accelerator: 'CmdOrCtrl+Shift+N', click: createWindow }, { type: 'separator' }, { role: 'close' }] },
     { role: 'editMenu' },
     { label: 'View', submenu: [{ label: 'Toggle Sidebar', accelerator: 'CmdOrCtrl+\\', click: () => send('menu', 'sidebar') }, { label: 'New Split Pane', accelerator: 'CmdOrCtrl+D', click: () => focused('split') }, { label: 'Focus Mode', accelerator: 'CmdOrCtrl+Shift+F', click: () => focused('focus') }, { type: 'separator' }, { role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }] },
@@ -426,7 +426,7 @@ app.whenReady().then(() => {
   registerShortcut();
   createWindow();
   // A free check against GitHub Releases, once at launch and then once a day. Smoke runs skip it.
-  if (!process.env.HANOBI_USER_DATA) { setTimeout(checkUpdate, 5000); setInterval(checkUpdate, 24 * 60 * 60 * 1000).unref(); }
+  if (!process.env.ORIN_USER_DATA) { setTimeout(checkUpdate, 5000); setInterval(checkUpdate, 24 * 60 * 60 * 1000).unref(); }
   app.on('activate', () => { if (windows.size === 0) createWindow(); });
 });
 

@@ -1,69 +1,67 @@
-/* Hanobi design tokens.
-   Neutrals carry the interface. Ember is reserved for the primary action, the live state, selection, and the mark.
-   Theme follows macOS; Settings → General can force light or dark through nativeTheme. */
+/* Orin design tokens.
+   Monochrome: true black and white carry everything. The "accent" is the strongest contrast of the theme (white on
+   black, black on white). It is reserved for the primary action, the live state, selection, and the mark.
+   Color appears only for meaning: danger, success, warning, and code.
+   Dark is the default. Settings → General can choose Dark, Light, or System through nativeTheme. */
 :root {
-  --bg: #f7f7f5;
-  --sidebar: #efefec;
+  --bg: #ffffff;
+  --sidebar: #ffffff;
   --surface: #ffffff;
   --raised: #ffffff;
-  --text: #1b1b19;
-  --text-2: #57574f;
-  --text-3: #8b8b83;
-  --border: #e3e3de;
-  --border-strong: #cfcfc7;
-  --hover: rgba(20, 20, 10, .045);
-  --selected: rgba(20, 20, 10, .075);
-  --user: #ecece7;
-  --code: #f0f0ec;
-  --accent: #e0532c;
-  --accent-hover: #c94622;
-  --accent-soft: rgba(224, 83, 44, .11);
+  --text: #0f1419;
+  --text-2: #536471;
+  --text-3: #8b98a5;
+  --border: #eceff1;
+  --border-strong: #cfd9de;
+  --hover: rgba(15, 20, 25, .05);
+  --selected: rgba(15, 20, 25, .085);
+  --user: #f2f4f5;
+  --code: #f7f9f9;
+  --accent: #0f1419;
+  --accent-hover: #272c30;
+  --accent-soft: rgba(15, 20, 25, .08);
   --on-accent: #ffffff;
-  --danger: #c23a32;
-  --success: #2c8a57;
-  --warning: #b97a12;
-  --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 28px rgba(0, 0, 0, .08);
-  --pop-shadow: 0 2px 6px rgba(0, 0, 0, .06), 0 18px 50px rgba(0, 0, 0, .16);
-  --radius: 10px;
+  --glow: rgba(15, 20, 25, .12);
+  --danger: #e0245e;
+  --success: #00a36c;
+  --warning: #c77d00;
+  --shadow: 0 1px 2px rgba(15, 20, 25, .05), 0 8px 28px rgba(15, 20, 25, .08);
+  --pop-shadow: 0 2px 6px rgba(15, 20, 25, .06), 0 18px 50px rgba(15, 20, 25, .16);
+  --radius: 12px;
+  --ease: cubic-bezier(.2, 0, 0, 1);
+  --spring: cubic-bezier(.34, 1.4, .64, 1);
+  --fast: 110ms;
+  --mid: 200ms;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #141413;
-    --sidebar: #1a1a18;
-    --surface: #1f1f1d;
-    --raised: #262624;
-    --text: #ecebe5;
-    --text-2: #a7a69e;
-    --text-3: #74736c;
-    --border: #2c2c29;
-    --border-strong: #3c3c38;
-    --hover: rgba(255, 255, 245, .05);
-    --selected: rgba(255, 255, 245, .085);
-    --user: #262624;
-    --code: #1b1b19;
-    --accent: #f0643a;
-    --accent-hover: #ff7a52;
-    --accent-soft: rgba(240, 100, 58, .14);
-    --danger: #ef6b62;
-    --success: #4cbf80;
-    --warning: #e0a84a;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 28px rgba(0, 0, 0, .3);
-    --pop-shadow: 0 2px 8px rgba(0, 0, 0, .4), 0 20px 60px rgba(0, 0, 0, .5);
+    --bg: #000000;
+    --sidebar: #000000;
+    --surface: #0b0b0c;
+    --raised: #16181c;
+    --text: #e7e9ea;
+    --text-2: #9ba1a6;
+    --text-3: #62676c;
+    --border: #202327;
+    --border-strong: #2f3336;
+    --hover: rgba(231, 233, 234, .06);
+    --selected: rgba(231, 233, 234, .1);
+    --user: #16181c;
+    --code: #0b0b0c;
+    --accent: #f5f6f7;
+    --accent-hover: #d7dbdc;
+    --accent-soft: rgba(245, 246, 247, .1);
+    --on-accent: #000000;
+    --glow: rgba(245, 246, 247, .16);
+    --danger: #f4212e;
+    --success: #00ba7c;
+    --warning: #ffad1f;
+    --shadow: 0 0 0 1px rgba(255, 255, 255, .02), 0 8px 28px rgba(0, 0, 0, .6);
+    --pop-shadow: 0 0 0 1px rgba(255, 255, 255, .04), 0 20px 60px rgba(0, 0, 0, .8);
   }
-}
-
-/* Palettes (Settings → General). Each one changes the accent and the neutral tint, in light and dark.
-   Hanobi (ember) is the default. "custom" sets --accent from the user's color at runtime. */
-:root[data-palette="gemini"] { --bg: #f8fafd; --sidebar: #eef2f8; --user: #e9eef6; --code: #eef2f7; --border: #dfe4ec; --border-strong: #c9d0db; --accent: #1a73e8; --accent-hover: #1765cc; --accent-soft: rgba(26, 115, 232, .1); }
-:root[data-palette="chatgpt"] { --bg: #ffffff; --sidebar: #f9f9f9; --user: #f2f2f2; --code: #f4f4f4; --border: #e5e5e5; --border-strong: #d0d0d0; --accent: #10a37f; --accent-hover: #0d8c6c; --accent-soft: rgba(16, 163, 127, .1); }
-:root[data-palette="deepseek"] { --bg: #ffffff; --sidebar: #f5f8ff; --user: #eef3ff; --code: #f1f4fa; --border: #e2e7f1; --border-strong: #ccd4e4; --accent: #4d6bfe; --accent-hover: #3d58e0; --accent-soft: rgba(77, 107, 254, .1); }
-@media (prefers-color-scheme: dark) {
-  :root[data-palette="gemini"] { --bg: #131314; --sidebar: #1e1f20; --surface: #1e1f20; --raised: #282a2c; --user: #282a2c; --code: #1a1b1c; --border: #2d2f31; --border-strong: #3c4043; --accent: #8ab4f8; --accent-hover: #a8c7fa; --accent-soft: rgba(138, 180, 248, .14); --on-accent: #0b1a33; }
-  :root[data-palette="chatgpt"] { --bg: #212121; --sidebar: #171717; --surface: #2a2a2a; --raised: #303030; --user: #303030; --code: #1a1a1a; --border: #333333; --border-strong: #444444; --accent: #19c37d; --accent-hover: #2fd892; --accent-soft: rgba(25, 195, 125, .14); --on-accent: #06281a; }
-  :root[data-palette="deepseek"] { --bg: #292a2d; --sidebar: #212327; --surface: #303136; --raised: #36373c; --user: #3a3b40; --code: #232428; --border: #3a3b40; --border-strong: #4a4b51; --accent: #6b85ff; --accent-hover: #8a9fff; --accent-soft: rgba(107, 133, 255, .16); }
 }
 
 * { box-sizing: border-box; }
@@ -149,7 +147,7 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 
 .empty, .home { text-align: center; padding: 14vh 20px 0; }
 .home { margin: auto; padding: 0 24px 8vh; max-width: 520px; }
-.empty-spark { color: var(--accent); }
+.empty-mark { color: var(--accent); }
 .empty h1, .home h1 { font-size: 24px; font-weight: 650; letter-spacing: -.02em; margin: 16px 0 8px; text-wrap: balance; }
 .empty p, .home p { color: var(--text-2); font-size: 14px; line-height: 1.6; margin: 0 auto 22px; max-width: 460px; text-wrap: pretty; }
 
@@ -195,7 +193,7 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 .prose blockquote { border-left: 3px solid var(--border-strong); padding-left: 12px; color: var(--text-2); }
 .prose :not(pre) > code { font-size: .87em; background: var(--code); border: 1px solid var(--border); padding: .08em .36em; border-radius: 5px; }
 .prose table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 13px; }
-.prose th, .prose td { border: 1px solid var(--border); padding: 5px 10px; text-align: left; }
+.prose th, .prose td { border: 1px solid var(--border); padding: 5px 10px; text-align: left; overflow-wrap: break-word; }
 .prose th { background: var(--code); font-weight: 600; }
 .prose hr { border: 0; border-top: 1px solid var(--border); margin: 1.4em 0; }
 .code-block { margin: 0 0 .9em; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--code); }
@@ -272,7 +270,8 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 .activity-tool { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .activity-tool code { font-family: var(--mono); font-size: 11.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .activity-tool .tool-status { margin-left: auto; flex: none; display: inline-grid; }
-.working-spark { display: inline-grid; color: var(--accent); animation: burst 1.6s ease-in-out infinite; }
+.working-mark { display: inline-grid; color: var(--accent); }
+.mark.live .mark-inner { stroke-dasharray: 20 10.2; transform-origin: 12px 12px; animation: orbit 1.1s linear infinite; }
 
 /* Composer */
 .composer-wrap { flex: none; padding: 0 28px 14px; max-width: 816px; width: 100%; margin: 0 auto; position: relative; }
@@ -448,18 +447,12 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 50% { opacity: .45; } }
-@keyframes burst { 0%, 100% { transform: scale(.82) rotate(0deg); opacity: .7; } 50% { transform: scale(1.08) rotate(15deg); opacity: 1; } }
+@keyframes orbit { to { transform: rotate(360deg); } }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
 @keyframes fade { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition: none !important; } }
 @media (max-width: 1000px) { .app.with-panel { grid-template-columns: 220px minmax(0, 1fr) 300px; } .column { padding: 22px 18px; } .composer-wrap { padding: 0 18px 12px; } }
 
-.palettes { display: flex; flex-wrap: wrap; gap: 6px; }
-.palette { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface); }
-.palette.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.palette-swatch { width: 12px; height: 12px; border-radius: 50%; }
-.palette-custom { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--text-2); }
-.palette-custom input { width: 34px; height: 24px; border: 0; padding: 0; background: none; }
 
 .suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 2px 8px; }
 .suggestion { padding: 6px 11px; border-radius: 16px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-2); font-size: 12.5px; text-align: left; }
@@ -616,3 +609,30 @@ body.resizing { cursor: col-resize; user-select: none; }
 .voice-language { display: flex; align-items: center; gap: 10px; }
 .voice-language span { color: var(--text-2); }
 kbd { font: 500 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface); }
+
+/* Feel. Every control answers the press at once and settles with a short spring; a new message rises in; the live
+   state breathes. Durations stay short (110–200 ms) because these actions repeat all day. */
+.btn, .icon-btn, .send, .new-chat, .thread-row, .side-action, .foot-btn, .pick-item, .msg-action, .code-btn, .segmented button {
+  transition: background-color var(--fast) var(--ease), color var(--fast) var(--ease), border-color var(--fast) var(--ease), box-shadow var(--mid) var(--ease), transform var(--mid) var(--spring);
+}
+.btn:active:not(:disabled), .icon-btn:active:not(:disabled), .new-chat:active, .side-action:active, .foot-btn:active, .msg-action:active, .code-btn:active, .segmented button:active { transform: scale(.96); transition-duration: 60ms; }
+.thread-row:active { transform: scale(.985); transition-duration: 60ms; }
+.btn.primary, .btn.lg, .new-chat { border-radius: 999px; }
+.btn.primary { font-weight: 650; }
+.btn.primary:hover:not(:disabled) { box-shadow: 0 0 0 4px var(--accent-soft); }
+.send { width: 32px; height: 32px; }
+.send:hover:not(:disabled) { transform: scale(1.06); box-shadow: 0 0 0 5px var(--accent-soft); }
+.send:active:not(:disabled) { transform: scale(.9); transition-duration: 60ms; }
+.composer { transition: border-color var(--mid) var(--ease), box-shadow var(--mid) var(--ease); }
+.composer:focus-within { border-color: var(--text-2); box-shadow: var(--shadow), 0 0 0 4px var(--accent-soft); }
+.thread-row.active { box-shadow: inset 2px 0 0 var(--accent); }
+.msg:last-child { animation: msg-in 260ms var(--ease) both; }
+.dot-live { box-shadow: none; animation: breathe 1.6s var(--ease) infinite; }
+.toast { animation: toast-in 280ms var(--spring) both; }
+.prose th { letter-spacing: .01em; }
+.prose h1, .prose h2, .prose h3 { letter-spacing: -.02em; font-weight: 750; }
+::selection { background: var(--accent); color: var(--on-accent); }
+@keyframes msg-in { from { opacity: 0; transform: translateY(8px); } }
+@keyframes breathe { 0%, 100% { box-shadow: 0 0 0 0 var(--glow); opacity: 1; } 50% { box-shadow: 0 0 0 5px transparent; opacity: .6; } }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, -10px) scale(.96); } }
+@media (prefers-reduced-motion: reduce) { .btn, .icon-btn, .send, .thread-row { transform: none !important; } }

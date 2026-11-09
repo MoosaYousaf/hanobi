@@ -24,7 +24,7 @@ test('limits: Claude windows come from the OAuth usage endpoint; the token is ne
 });
 
 test('limits: Codex windows come from the newest session log; a window that already reset reads 0', () => {
-  const home = tmp('hanobi-codex-');
+  const home = tmp('orin-codex-');
   const day = path.join(home, 'sessions/2026/10/29');
   fs.mkdirSync(day, { recursive: true });
   const event = (primary, secondary) => JSON.stringify({ type: 'event_msg', payload: { type: 'token_count', info: {}, rate_limits: { primary, secondary, plan_type: 'plus', credits: { has_credits: true, unlimited: false, balance: '12.5' } } } });
@@ -34,12 +34,12 @@ test('limits: Codex windows come from the newest session log; a window that alre
   assert.equal(reading.plan, 'ChatGPT Plus');
   assert.equal(reading.note, 'Credits: 12');
   assert.deepEqual(reading.windows, [{ id: 'primary', label: 'Session (5 hours)', used: 0, resetsAt: null }, { id: 'secondary', label: 'Week', used: 40, resetsAt: now + 3600000 }]);
-  assert.throws(() => codex({ home: tmp('hanobi-empty-') }), /first Codex reply/);
+  assert.throws(() => codex({ home: tmp('orin-empty-') }), /first Codex reply/);
   assert.equal(span(1440 * 30), '30 days');
 });
 
 test('limits: Copilot quotas come from gh; unused quotas (entitlement 0) are left out', async () => {
-  const bin = tmp('hanobi-gh-');
+  const bin = tmp('orin-gh-');
   const gh = path.join(bin, 'gh');
   fs.copyFileSync(path.join(__dirname, 'fixtures/fake-gh.cjs'), gh);
   fs.chmodSync(gh, 0o755);

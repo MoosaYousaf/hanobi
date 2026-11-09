@@ -1,5 +1,5 @@
 # Builds unsigned macOS releases when a version tag is pushed (git tag v0.4.0 && git push --tags).
-# Hanobi's update check reads these releases.
+# Orin's update check reads these releases.
 name: Release
 on:
   push:
@@ -21,4 +21,4 @@ jobs:
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/release/*.dmg dist/release/*.zip --title "Hanobi ${GITHUB_REF_NAME#v}" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" dist/release/*.dmg dist/release/*.zip --title "Orin ${GITHUB_REF_NAME#v}" --generate-notes

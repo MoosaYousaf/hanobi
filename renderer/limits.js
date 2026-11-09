@@ -33,7 +33,7 @@ export function receive({ cli, ...reading }) {
   set(s => ({ limits: { ...s.limits, [cli]: reading } }));
   warn(cli, reading);
 }
-window.hanobi.on('limits', receive);
+window.orin.on('limits', receive);
 
 // The limits of a connection's CLI, read when the conversation opens and when the hover card opens.
 export function useLimits(connectionId, cli) {

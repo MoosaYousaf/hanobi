@@ -1,6 +1,6 @@
-// Hanobi's speech helper: Apple speech recognition on this Mac, with no network.
-// Usage: hanobi-speech <locale>          records from the microphone until "stop" or "cancel" arrives on stdin
-//        hanobi-speech --status <locale>  prints the permission and on-device support, then exits
+// Orin's speech helper: Apple speech recognition on this Mac, with no network.
+// Usage: orin-speech <locale>          records from the microphone until "stop" or "cancel" arrives on stdin
+//        orin-speech --status <locale>  prints the permission and on-device support, then exits
 // Output: one JSON object per line: ready, level (0..1), partial (text so far), final (text), error (message).
 import Foundation
 import Speech
@@ -69,7 +69,7 @@ func start() {
   emit(["type": "ready"])
 }
 
-// stdin: "stop" ends the audio and waits for the final text; "cancel" or a closed stdin (Hanobi quit) exits at once.
+// stdin: "stop" ends the audio and waits for the final text; "cancel" or a closed stdin (Orin quit) exits at once.
 DispatchQueue.global().async {
   while let line = readLine() {
     if line == "stop" {
@@ -87,7 +87,7 @@ SFSpeechRecognizer.requestAuthorization { status in
   DispatchQueue.main.async {
     switch status {
     case .authorized: start()
-    case .denied: fail("Hanobi cannot use speech recognition. Allow it in System Settings → Privacy & Security → Speech Recognition.")
+    case .denied: fail("Orin cannot use speech recognition. Allow it in System Settings → Privacy & Security → Speech Recognition.")
     case .restricted: fail("Speech recognition is restricted on this Mac.")
     default: fail("Speech recognition permission was not given.")
     }

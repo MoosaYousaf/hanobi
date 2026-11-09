@@ -112,7 +112,7 @@ function GitPanel({ workspaceId }) {
   const [branchMenu, setBranchMenu] = useState(null);
   const [syncing, setSyncing] = useState(null); // 'push' | 'pull'
   const load = useCallback(() => call('git:status', workspaceId).then(setStatus, toast), [workspaceId]);
-  useEffect(() => { load(); return window.hanobi.on('git-changed', id => { if (id === workspaceId) load(); }); }, [load, workspaceId]);
+  useEffect(() => { load(); return window.orin.on('git-changed', id => { if (id === workspaceId) load(); }); }, [load, workspaceId]);
   // An agent run usually changes files, so refresh when one finishes.
   const running = useStore(s => Object.keys(s.live).length);
   useEffect(() => { if (!running) load(); }, [running, load]);

@@ -3,13 +3,16 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const VERSION = 2;
-const empty = () => ({ version: VERSION, workspaces: [], threads: [], connections: [], mcpServers: [], modelCache: {}, preferences: { theme: 'system', palette: 'hanobi', accent: '#e0532c', suggestReplies: false, systemPrompt: '', lastModel: null, voice: { model: '', language: 'en' } } });
+const empty = () => ({ version: VERSION, workspaces: [], threads: [], connections: [], mcpServers: [], modelCache: {}, preferences: { theme: 'dark', suggestReplies: false, systemPrompt: '', lastModel: null, voice: { model: '', language: 'en' } } });
 
 // Fills in fields added after a file was written. Workspaces from before Chat and Projects are code folders;
 // main marks the general Chats folder at startup.
+// Data from before Orin's monochrome theme has a palette: it is dropped, and the old default (system) becomes dark.
 function migrate(loaded) {
   if (loaded.version !== VERSION) throw new Error(`Unknown data version ${loaded.version}.`);
-  return { ...empty(), ...loaded, workspaces: (loaded.workspaces || []).map(w => ({ kind: 'code', ...w })), preferences: { ...empty().preferences, ...loaded.preferences } };
+  const { palette, accent, ...preferences } = loaded.preferences || {};
+  if (palette && preferences.theme === 'system') preferences.theme = 'dark';
+  return { ...empty(), ...loaded, workspaces: (loaded.workspaces || []).map(w => ({ kind: 'code', ...w })), preferences: { ...empty().preferences, ...preferences } };
 }
 
 class Store {

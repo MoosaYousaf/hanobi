@@ -1,7 +1,7 @@
 const { spawn } = require('node:child_process');
 
 // Codex "Ask first" runs `codex app-server`: JSON-RPC lines on stdio. The server asks before commands and file
-// changes with requests that Hanobi answers after the user decides. Sessions are the same threads that `codex exec` uses.
+// changes with requests that Orin answers after the user decides. Sessions are the same threads that `codex exec` uses.
 const POLICY = { approvalPolicy: 'untrusted', sandbox: 'workspace-write' };
 const NAMES = { 'item/commandExecution/requestApproval': 'Command', 'item/fileChange/requestApproval': 'File change' };
 
@@ -40,7 +40,7 @@ function run({ executable, env, cwd, input, resume, model, effort, draft, signal
   const done = new Promise(resolve => { finished = resolve; });
   const fail = error => { failure ||= error; finished(); };
 
-  // A server request waits for the user; anything Hanobi does not handle gets an error so the turn does not hang.
+  // A server request waits for the user; anything Orin does not handle gets an error so the turn does not hang.
   const serve = message => {
     // A user input request: answers are keyed by question id. An empty answer set means the user skipped.
     if (message.method === 'item/tool/requestUserInput' && question) {
@@ -57,7 +57,7 @@ function run({ executable, env, cwd, input, resume, model, effort, draft, signal
       return;
     }
     const name = NAMES[message.method];
-    if (!name || !approve) { write({ id: message.id, error: { code: -32601, message: `Hanobi does not handle ${message.method}.` } }); return; }
+    if (!name || !approve) { write({ id: message.id, error: { code: -32601, message: `Orin does not handle ${message.method}.` } }); return; }
     const p = message.params || {};
     const callId = p.itemId;
     const shown = draft.parts.find(part => part.type === 'tool' && part.id === callId);
@@ -108,7 +108,7 @@ function run({ executable, env, cwd, input, resume, model, effort, draft, signal
   signal.addEventListener('abort', stop, { once: true });
 
   const turn = (async () => {
-    await request('initialize', { clientInfo: { name: 'hanobi', title: 'Hanobi', version: '1' }, capabilities: { experimentalApi: false, requestAttestation: false } });
+    await request('initialize', { clientInfo: { name: 'orin', title: 'Orin', version: '1' }, capabilities: { experimentalApi: false, requestAttestation: false } });
     write({ method: 'initialized' });
     const settings = { cwd, ...POLICY, ...(model ? { model } : {}) };
     const started = resume ? await request('thread/resume', { threadId: resume, ...settings, excludeTurns: true }) : await request('thread/start', settings);

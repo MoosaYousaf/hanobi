@@ -2,7 +2,7 @@ import { memo, useState, useRef, useLayoutEffect, useEffect } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChevronRight, Check, Copy, Wrench, CircleAlert, Ban, Clock, GitBranch, RotateCcw, Pencil, Download, Eye, Code, Play } from 'lucide-react';
-import { Working } from './Spark.jsx';
+import { Working } from './Mark.jsx';
 import { FileCard, ToolFiles, ExportMenu, exportText, markdownHtml, snippetName, previewKind, SnippetPreview, LABELS } from './Files.jsx';
 import { useStore, answerApproval, answerQuestion, guard, call, toast, copyText } from '../store.js';
 

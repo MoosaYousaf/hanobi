@@ -16,7 +16,7 @@ const tmp = prefix => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), pref
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
 test('files: attach, write in each format, and only resolve paths of the thread and its workspace', async () => {
-  const root = tmp('hanobi-files-'), workspace = tmp('hanobi-ws-'), outside = tmp('hanobi-out-');
+  const root = tmp('orin-files-'), workspace = tmp('orin-ws-'), outside = tmp('orin-out-');
   const printed = [];
   const files = new Files(root, { printPdf: async html => { printed.push(html); return Buffer.from('%PDF-1.4 fake'); } });
   try {
@@ -96,7 +96,7 @@ function fakeAnthropic() {
       const usage = { input_tokens: 10, output_tokens: 5 };
       send('message_start', { message: { id: 'm' + requests.length, type: 'message', role: 'assistant', model: request.model, content: [], stop_reason: null, usage } });
       if (requests.length === 1) {
-        send('content_block_start', { index: 0, content_block: { type: 'tool_use', id: 'toolu_1', name: 'hanobi__write_file', input: {} } });
+        send('content_block_start', { index: 0, content_block: { type: 'tool_use', id: 'toolu_1', name: 'orin__write_file', input: {} } });
         send('content_block_delta', { index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify({ name: 'totals.csv', content: 'region,total\nNorth,12\n' }) } });
         send('content_block_stop', { index: 0 });
         send('message_delta', { delta: { stop_reason: 'tool_use' }, usage });
@@ -114,7 +114,7 @@ function fakeAnthropic() {
 }
 
 test('runner: attachments reach the API model as text and images, and write_file makes a file part', async () => {
-  const root = tmp('hanobi-run-files-'), src = tmp('hanobi-src-');
+  const root = tmp('orin-run-files-'), src = tmp('orin-src-');
   const fake = await fakeAnthropic();
   process.env.ANTHROPIC_BASE_URL = fake.url;
   const data = { 'key:a': 'sk-test' };
@@ -137,7 +137,7 @@ test('runner: attachments reach the API model as text and images, and write_file
     assert.deepEqual(user.map(b => b.type), ['image', 'text']);
     assert.equal(user[0].source.data, PNG.toString('base64'));
     assert.equal(user[1].text, '<attachment name="sales.csv">\nregion,amount\nNorth,7\nNorth,5\n\n</attachment>\n\nTotal by region as a CSV file.');
-    assert.ok(fake.requests[0].tools.some(t => t.name === 'hanobi__write_file'));
+    assert.ok(fake.requests[0].tools.some(t => t.name === 'orin__write_file'));
     const messages = store.thread(thread.id).messages;
     assert.deepEqual(messages[0].parts.map(p => p.type), ['file', 'file', 'text']);
     const reply = messages.at(-1);

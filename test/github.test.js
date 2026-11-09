@@ -12,7 +12,7 @@ const tmp = prefix => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), pref
 const run = (cwd, ...args) => { const r = spawnSync('git', args, { cwd, encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr); return r.stdout; };
 
 test('branches: switch, create, publish, push, and pull with ahead and behind counts', async () => {
-  const remote = tmp('hanobi-remote-'), a = tmp('hanobi-a-'), b = tmp('hanobi-b-');
+  const remote = tmp('orin-remote-'), a = tmp('orin-a-'), b = tmp('orin-b-');
   try {
     run(remote, 'init', '-q', '--bare', '-b', 'main');
     for (const dir of [a]) { run(dir, 'init', '-q', '-b', 'main'); run(dir, 'config', 'user.email', 't@example.com'); run(dir, 'config', 'user.name', 'T'); run(dir, 'remote', 'add', 'origin', remote); }
@@ -47,7 +47,7 @@ test('branches: switch, create, publish, push, and pull with ahead and behind co
 });
 
 test('pull requests through gh: none, create with the body on stdin, current with checks, list, checkout', async () => {
-  const home = tmp('hanobi-gh-'), bin = path.join(home, '.local/bin'), repo = tmp('hanobi-repo-'), remote = tmp('hanobi-remote-');
+  const home = tmp('orin-gh-'), bin = path.join(home, '.local/bin'), repo = tmp('orin-repo-'), remote = tmp('orin-remote-');
   const saved = { HOME: process.env.HOME, FAKE_GH_LOG: process.env.FAKE_GH_LOG, FAKE_GH_STATE: process.env.FAKE_GH_STATE };
   fs.mkdirSync(bin, { recursive: true });
   fs.copyFileSync(path.join(__dirname, 'fixtures/fake-gh.cjs'), path.join(bin, 'gh'));

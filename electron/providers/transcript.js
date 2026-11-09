@@ -1,4 +1,4 @@
-// Converts Hanobi's neutral message history into what each provider expects.
+// Converts Orin's neutral message history into what each provider expects.
 // Assistant turns keep their native request messages (`native`), so a conversation that stays on one
 // provider replays exactly, including thinking blocks. Turns from another provider become plain text.
 const fs = require('node:fs');

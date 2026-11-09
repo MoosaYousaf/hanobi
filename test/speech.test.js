@@ -33,5 +33,5 @@ test('speech: a denied permission, a missing helper, and a macOS stop give clear
   const run = async mode => { process.env.FAKE_SPEECH = mode; try { await new Speech({ helper }).start('en-US'); } finally { delete process.env.FAKE_SPEECH; } };
   await assert.rejects(run('deny'), /cannot use speech recognition/);
   await assert.rejects(run('abort'), /no speech permission text/);
-  await assert.rejects(new Speech({ helper: '/nope/hanobi-speech' }).start('en-US'), /helper is missing/);
+  await assert.rejects(new Speech({ helper: '/nope/orin-speech' }).start('en-US'), /helper is missing/);
 });

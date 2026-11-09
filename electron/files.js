@@ -118,7 +118,7 @@ class Files {
       return fs.writeFile(target, await this.printPdf(htmlDocument(content, name)));
     }
     if (RICH_OUT.test(name)) return textutil(htmlDocument(content, name), target);
-    throw new Error(`Hanobi cannot make ${path.extname(name) || 'files without an extension'}. Use a text format, .html, .docx, .rtf, .odt, or .pdf.`);
+    throw new Error(`Orin cannot make ${path.extname(name) || 'files without an extension'}. Use a text format, .html, .docx, .rtf, .odt, or .pdf.`);
   }
 
   async write(threadId, name, content) {
@@ -136,7 +136,7 @@ class Files {
     if (typeof file !== 'string' || !file) throw new Error('File required.');
     const full = await fs.realpath(path.resolve(workspacePath, file)).catch(() => { throw new Error(`${path.basename(file)} no longer exists.`); });
     const roots = await Promise.all([this.dir(threadId, ''), workspacePath].map(r => fs.realpath(r).catch(() => null)));
-    if (!roots.some(r => r && (full === r || full.startsWith(r + path.sep)))) throw new Error('Hanobi only opens files from this conversation and its workspace.');
+    if (!roots.some(r => r && (full === r || full.startsWith(r + path.sep)))) throw new Error('Orin only opens files from this conversation and its workspace.');
     const stat = await fs.stat(full);
     if (!stat.isFile()) throw new Error('Not a file.');
     return full;

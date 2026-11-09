@@ -45,7 +45,7 @@ function fakeAnthropic() {
 }
 
 test('the Anthropic adapter streams thinking, runs a tool, and replays thinking blocks unchanged', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hanobi-anthropic-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'orin-anthropic-'));
   const fake = await fakeAnthropic();
   process.env.ANTHROPIC_BASE_URL = fake.url;
   const data = { 'key:a': 'sk-test' };

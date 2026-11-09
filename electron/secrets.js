@@ -19,7 +19,7 @@ class Secrets {
   set(key, value) {
     if (value === null || value === undefined || value === '') delete this.data[key];
     else {
-      if (!this.available()) throw new Error('macOS Keychain encryption is unavailable, so Hanobi cannot store secrets.');
+      if (!this.available()) throw new Error('macOS Keychain encryption is unavailable, so Orin cannot store secrets.');
       this.data[key] = this.safe.encryptString(JSON.stringify(value)).toString('base64');
     }
     fs.mkdirSync(path.dirname(this.file), { recursive: true });

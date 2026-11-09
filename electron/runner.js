@@ -18,7 +18,7 @@ const UPDATE_MS = 60;
 const SKIPPED = 'The user skipped the questions. Continue with your best judgment, or ask in plain text.';
 // API and local models get this tool next to the MCP tools, so any model can ask structured questions.
 const ASK_TOOL = {
-  qualified: 'hanobi__ask_user', server: 'Hanobi', name: 'ask_user',
+  qualified: 'orin__ask_user', server: 'Orin', name: 'ask_user',
   description: 'Ask the user 1 to 4 multiple-choice questions when a decision is theirs to make and you cannot resolve it from context. The user can also type their own answer. Returns the answers, keyed by question text.',
   inputSchema: { type: 'object', required: ['questions'], properties: { questions: { type: 'array', minItems: 1, maxItems: 4, items: { type: 'object', required: ['question', 'options'], properties: {
     question: { type: 'string' }, header: { type: 'string', description: 'A label of at most 12 characters.' }, multiSelect: { type: 'boolean' },
@@ -28,7 +28,7 @@ const ASK_TOOL = {
 
 // API and local models make files with this tool. The user gets a file card with Preview, Open, and Save.
 const WRITE_TOOL = {
-  qualified: 'hanobi__write_file', server: 'Hanobi', name: 'write_file',
+  qualified: 'orin__write_file', server: 'Orin', name: 'write_file',
   description: 'Create a file for the user to preview, open, and download, such as a report, a table, or a document. The extension sets the format. Text formats (.txt, .md, .csv, .json, .py, .svg, and others) take the file text. Rich formats (.docx, .pdf, .rtf, .odt, .html) take HTML body content: headings, paragraphs, lists, tables, and inline styles. Returns the saved file name.',
   inputSchema: { type: 'object', required: ['name', 'content'], properties: { name: { type: 'string', description: 'File name with extension, for example report.docx or data.csv.' }, content: { type: 'string' } } }
 };
@@ -235,7 +235,7 @@ class Runner {
         draft.setStatus(callId, 'pending');
         const questions = normalizeQuestions(input?.questions);
         if (!questions.length) { const result = { output: 'Give 1 to 4 questions, each with 2 to 4 options.', isError: true }; draft.toolResult(callId, result); return result; }
-        const answers = await this.question(threadId, { callId, server: 'Hanobi', questions }).decision;
+        const answers = await this.question(threadId, { callId, server: 'Orin', questions }).decision;
         const result = answers ? { output: JSON.stringify(Object.fromEntries(questions.map(q => [q.question, answers[q.id].join(', ')]))) } : { output: SKIPPED, isError: true };
         draft.toolResult(callId, result);
         return result;

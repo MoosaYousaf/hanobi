@@ -53,7 +53,7 @@ class Speech {
     child.on('error', error => end(error));
     // SIGABRT (134) is macOS stopping the helper: the app has no speech permission text in its Info.plist.
     child.on('close', (code, signal) => end(code === 134 || signal === 'SIGABRT'
-      ? new Error('macOS stopped speech recognition because this copy of Hanobi has no speech permission text. Run npm run build, or reinstall Hanobi.')
+      ? new Error('macOS stopped speech recognition because this copy of Orin has no speech permission text. Run npm run build, or reinstall Orin.')
       : code ? new Error(stderr.trim() || `The speech helper stopped with code ${code}.`) : null, ''));
     return started;
   }

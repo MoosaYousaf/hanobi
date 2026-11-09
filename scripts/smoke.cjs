@@ -3,20 +3,20 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-process.env.HANOBI_USER_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'hanobi-smoke-'));
+process.env.ORIN_USER_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'orin-smoke-'));
 // Seed one conversation so message rendering is exercised.
-const folder = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'hanobi-project-')));
+const folder = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'orin-project-')));
 const now = Date.now();
 const text = t => ({ type: 'text', text: t });
 // A file part whose file exists in the thread's folder, the way files:attach and write_file leave it.
 const fileSeed = (kind, name, body) => {
-  const dir = path.join(process.env.HANOBI_USER_DATA, 'Files', 't2', kind);
+  const dir = path.join(process.env.ORIN_USER_DATA, 'Files', 't2', kind);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, name), body);
   return { type: 'file', name, path: path.join(dir, name), size: Buffer.byteLength(body), mediaType: name.endsWith('.csv') ? 'text/csv' : 'text/plain' };
 };
-fs.writeFileSync(path.join(process.env.HANOBI_USER_DATA, 'hanobi-data.json'), JSON.stringify({
-  version: 2, workspaces: [{ id: 'w1', name: 'hanobi', path: folder }], connections: [],
+fs.writeFileSync(path.join(process.env.ORIN_USER_DATA, 'orin-data.json'), JSON.stringify({
+  version: 2, workspaces: [{ id: 'w1', name: 'orin', path: folder }], connections: [],
   mcpServers: [{ id: 'notes', name: 'Notes', transport: 'stdio', command: 'node', args: [path.join(__dirname, '../test/fixtures/notes-server.cjs')], url: '', oauth: false, enabled: false }], modelCache: {}, preferences: { theme: 'system', systemPrompt: '', lastModel: null },
   threads: [{ id: 't1', workspaceId: 'w1', title: 'Parse the release notes', connectionId: 'claude-code', model: 'claude-opus-5-5', effort: 'high', mode: 'auto', sessionId: null, replay: false, createdAt: now, updatedAt: now, messages: [
     { id: 'm1', at: now, role: 'user', parts: [text('Find every breaking change in CHANGELOG.md and summarize them.')] },
@@ -24,32 +24,32 @@ fs.writeFileSync(path.join(process.env.HANOBI_USER_DATA, 'hanobi-data.json'), JS
       { type: 'thinking', text: 'Read the changelog first, then group the entries by version.' },
       { type: 'tool', id: 'a', name: 'Read', input: { file_path: 'CHANGELOG.md' }, output: '## 2.0.0\n- Removed the legacy API', status: 'done' },
       { type: 'tool', id: 'b', name: 'Bash', input: { command: 'git log --oneline -5' }, output: 'fatal: not a git repository', status: 'error' },
-      text('There are **two** breaking changes in `2.0.0`:\n\n1. The legacy API is removed.\n2. Config moved to `hanobi.json`.\n\n```js\nconst config = require(\'./hanobi.json\');\n```\n\n| Version | Change |\n| --- | --- |\n| 2.0.0 | Legacy API removed |')] }
+      text('There are **two** breaking changes in `2.0.0`:\n\n1. The legacy API is removed.\n2. Config moved to `orin.json`.\n\n```js\nconst config = require(\'./orin.json\');\n```\n\n| Version | Change |\n| --- | --- |\n| 2.0.0 | Legacy API removed |')] }
   ] }, { id: 't2', workspaceId: 'w1', title: 'Quarterly table', connectionId: 'claude-code', model: 'claude-opus-5-5', effort: 'high', mode: 'auto', sessionId: null, replay: false, createdAt: now - 60000, updatedAt: now - 60000, messages: [
     { id: 'm3', at: now, role: 'user', parts: [fileSeed('in', 'brief.txt', 'Q3 figures'), text('Make a table of the totals.')] },
     { id: 'm4', at: now, role: 'assistant', connectionId: 'claude-code', model: 'claude-opus-5-5', parts: [
       { type: 'tool', id: 'w', name: 'Write', input: { file_path: path.join(folder, 'report.md'), content: '# Report' }, output: 'File created', status: 'done' },
       fileSeed('out', 'totals.csv', 'region,total\nNorth,12\n'),
-      text('# Quarterly totals\n\n```csv totals.csv\nregion,total\nNorth,12\nSouth,9\n```\n\n```python\nprint("done")\n```\n\n```html\n<p id="out">waiting</p><script>document.getElementById("out").textContent = "ran " + (typeof require) + " " + (typeof window.hanobi)</script>\n```\n\n```mermaid\nflowchart LR\n  Plan --> Build --> Ship\n```')] }
+      text('# Quarterly totals\n\n```csv totals.csv\nregion,total\nNorth,12\nSouth,9\n```\n\n```python\nprint("done")\n```\n\n```html\n<p id="out">waiting</p><script>document.getElementById("out").textContent = "ran " + (typeof require) + " " + (typeof window.orin)</script>\n```\n\n```mermaid\nflowchart LR\n  Plan --> Build --> Ship\n```')] }
   ] }]
 }));
 // The workspace is a Git repository with a GitHub origin. A fake gh answers with one pull request.
 const { execFileSync } = require('node:child_process');
 const gitIn = (...args) => execFileSync('git', args, { cwd: folder });
 gitIn('init', '-q', '-b', 'feature/parser'); gitIn('config', 'user.email', 'smoke@example.com'); gitIn('config', 'user.name', 'Smoke');
-gitIn('remote', 'add', 'origin', 'https://github.com/example/hanobi.git');
+gitIn('remote', 'add', 'origin', 'https://github.com/example/orin.git');
 fs.writeFileSync(path.join(folder, 'CHANGELOG.md'), '## 2.0.0\n'); gitIn('add', '.'); gitIn('commit', '-qm', 'init');
 fs.writeFileSync(path.join(folder, 'notes.md'), 'draft\n');
-const ghBin = fs.mkdtempSync(path.join(os.tmpdir(), 'hanobi-gh-'));
+const ghBin = fs.mkdtempSync(path.join(os.tmpdir(), 'orin-gh-'));
 fs.copyFileSync(path.join(__dirname, '../test/fixtures/fake-gh.cjs'), path.join(ghBin, 'gh')); fs.chmodSync(path.join(ghBin, 'gh'), 0o755);
 process.env.PATH = `${ghBin}${path.delimiter}${process.env.PATH}`;
 process.env.FAKE_GH_LOG = path.join(ghBin, 'log'); process.env.FAKE_GH_STATE = path.join(ghBin, 'state.json');
-fs.writeFileSync(process.env.FAKE_GH_STATE, JSON.stringify({ pr: { number: 12, title: 'Parse breaking changes from the changelog', url: 'https://github.com/example/hanobi/pull/12', state: 'OPEN', isDraft: false, reviewDecision: 'CHANGES_REQUESTED', headRefName: 'feature/parser', baseRefName: 'main', author: { login: 'me' }, updatedAt: '2026-10-29T00:00:00Z' } }));
+fs.writeFileSync(process.env.FAKE_GH_STATE, JSON.stringify({ pr: { number: 12, title: 'Parse breaking changes from the changelog', url: 'https://github.com/example/orin/pull/12', state: 'OPEN', isDraft: false, reviewDecision: 'CHANGES_REQUESTED', headRefName: 'feature/parser', baseRefName: 'main', author: { login: 'me' }, updatedAt: '2026-10-29T00:00:00Z' } }));
 // Fixed plan limits: the session window is fine, the week is near its cap.
 const inHours = h => Date.now() + h * 3600 * 1000;
-process.env.HANOBI_LIMITS_FIXTURE = JSON.stringify({ claude: { plan: 'Claude Pro', windows: [{ id: 'five_hour', label: 'Session (5 hours)', used: 54, resetsAt: inHours(2) }, { id: 'seven_day', label: 'Week', used: 86, resetsAt: inHours(50) }], note: '' } });
+process.env.ORIN_LIMITS_FIXTURE = JSON.stringify({ claude: { plan: 'Claude Pro', windows: [{ id: 'five_hour', label: 'Session (5 hours)', used: 54, resetsAt: inHours(2) }, { id: 'seven_day', label: 'Week', used: 86, resetsAt: inHours(50) }], note: '' } });
 // A fake speech helper streams words without a microphone.
-process.env.HANOBI_SPEECH_HELPER = path.join(__dirname, '../test/fixtures/fake-speech.cjs');
+process.env.ORIN_SPEECH_HELPER = path.join(__dirname, '../test/fixtures/fake-speech.cjs');
 const { app, BrowserWindow, nativeTheme, dialog, systemPreferences, clipboard } = require('electron');
 // The microphone first answers "denied", so voice input shows its permission message without a macOS prompt.
 let microphone = 'denied';
@@ -126,7 +126,7 @@ app.whenReady().then(async () => {
     await key('ArrowRight');
     await until(win, `document.querySelector('.composer textarea').value === 'show the migration steps' && !document.querySelector('.ghost-rest')`, '→ takes the inline completion');
     await setComposer('');
-    // The / menu lists Hanobi's commands; Enter on /model opens the model picker.
+    // The / menu lists Orin's commands; Enter on /model opens the model picker.
     await setComposer('/cl');
     await until(win, `document.querySelector('.cmd-menu .cmd-item.active .cmd-name')?.textContent === '/clear'`, 'the / menu filters the commands');
     await shot(win, '1b-slash');
@@ -187,13 +187,13 @@ app.whenReady().then(async () => {
     await win.webContents.executeJavaScript(`document.querySelectorAll('.code-block')[1].querySelector('[aria-label="Copy code"]').click()`);
     await until(win, `document.querySelector('.toast')?.textContent === 'Code copied to the clipboard'`, 'copy confirms with a toast');
     if (clipboard.readText() !== 'print("done")') throw new Error(`Copy wrote ${JSON.stringify(clipboard.readText())}`);
-    // Run opens the HTML snippet with scripts on, in its own window without Node.js or the Hanobi bridge.
+    // Run opens the HTML snippet with scripts on, in its own window without Node.js or the Orin bridge.
     const windowCount = BrowserWindow.getAllWindows().length;
     await clickText(win, '.code-btn', 'Run');
     let runWin;
     for (let i = 0; i < 50 && !runWin; i++) { await sleep(100); runWin = BrowserWindow.getAllWindows().find(w => w.getTitle().startsWith('Run: ')); }
     if (!runWin || BrowserWindow.getAllWindows().length !== windowCount + 1) throw new Error('Timed out: Run opens a window');
-    await until(runWin, `document.getElementById('out')?.textContent === 'ran undefined undefined'`, 'the snippet script runs without require or the Hanobi bridge');
+    await until(runWin, `document.getElementById('out')?.textContent === 'ran undefined undefined'`, 'the snippet script runs without require or the Orin bridge');
     const permission = await Promise.race([runWin.webContents.executeJavaScript(`navigator.permissions.query({ name: 'geolocation' }).then(p => p.state)`), sleep(3000).then(() => 'timeout')]);
     if (permission !== 'denied') throw new Error(`Run window permissions are not denied: ${permission}`);
     runWin.destroy();
@@ -241,17 +241,19 @@ app.whenReady().then(async () => {
     await until(win, `document.querySelectorAll('.preset-grid .preset').length === 5`, 'connector presets');
     await shot(win, '4-connectors');
     await clickText(win, '.settings-nav button', 'General');
-    await clickText(win, '.palette', 'Gemini style');
-    await until(win, `document.documentElement.dataset.palette === 'gemini' && getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() !== ''`, 'palette applies');
+    await until(win, `[...document.querySelectorAll('.settings .segmented button')].map(b => b.textContent).join() === 'Dark,Light,System' && !document.querySelector('.palette')`, 'appearance has dark, light, and system and no palettes');
+    await clickText(win, '.settings .segmented button', 'Dark');
+    await until(win, `getComputedStyle(document.body).backgroundColor === 'rgb(0, 0, 0)'`, 'dark theme is true black');
+    await clickText(win, '.settings .segmented button', 'Light');
+    await until(win, `getComputedStyle(document.body).backgroundColor === 'rgb(255, 255, 255)'`, 'light theme is white');
     await shot(win, '5-theme');
-    await until(win, `[...document.querySelectorAll('.settings .shortcut-row')].map(r => r.textContent).join('|').match(/Show Hanobi from any app.*⌥ Space.*\\|Hanobi 0\\.\\d+\\.\\d+.*Check now/) !== null`, 'desktop settings show the shortcut and the version');
+    await until(win, `[...document.querySelectorAll('.settings .shortcut-row')].map(r => r.textContent).join('|').match(/Show Orin from any app.*⌥ Space.*\\|Orin 0\\.\\d+\\.\\d+.*Check now/) !== null`, 'desktop settings show the shortcut and the version');
     await until(win, `document.querySelector('.voice-language select')?.value === 'en' && !document.querySelector('.settings .hint.warn')`, 'voice settings show the language and a ready helper');
     await clickText(win, '.settings .shortcut-row .btn', 'Turn off');
     await until(win, `[...document.querySelectorAll('.settings .shortcut-row .btn.shortcut')][0]?.textContent === 'Off'`, 'the shortcut turns off');
     await clickText(win, '.settings .shortcut-row .btn', 'Use ⌥ Space');
     await until(win, `[...document.querySelectorAll('.settings .shortcut-row .btn.shortcut')][0]?.textContent.includes('Space')`, 'the shortcut turns on');
-    await clickText(win, '.palette', 'Hanobi');
-    await until(win, `document.documentElement.dataset.palette === 'hanobi'`, 'palette resets');
+    await clickText(win, '.settings .segmented button', 'System');
     await win.webContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
     await click(win, '.settings-close');
     await clickText(win, '.thread-row', 'Parse the release notes');
@@ -279,12 +281,12 @@ app.whenReady().then(async () => {
     await shot(win, '7-project');
     await clickText(win, '.project-head .btn', 'New chat');
     await until(win, `!document.querySelector('.composer-row [aria-label="Access mode"]') && !!document.querySelector('.crumb-ws') && document.querySelector('.crumb-ws').textContent === 'Launch plan'`, 'project chat opens in chat mode');
-    const saved = JSON.parse(fs.readFileSync(path.join(process.env.HANOBI_USER_DATA, 'hanobi-data.json'), 'utf8'));
+    const saved = JSON.parse(fs.readFileSync(path.join(process.env.ORIN_USER_DATA, 'orin-data.json'), 'utf8'));
     await sleep(600);
-    const project = JSON.parse(fs.readFileSync(path.join(process.env.HANOBI_USER_DATA, 'hanobi-data.json'), 'utf8')).workspaces.find(w => w.kind === 'project');
+    const project = JSON.parse(fs.readFileSync(path.join(process.env.ORIN_USER_DATA, 'orin-data.json'), 'utf8')).workspaces.find(w => w.kind === 'project');
     if (!project || project.instructions !== 'Write for customers.' || !fs.readFileSync(path.join(project.path, 'CLAUDE.md'), 'utf8').includes('Write for customers.')) throw new Error('Project instructions were not saved: ' + JSON.stringify(project || saved.workspaces));
     await clickText(win, '.view-switch button', 'Code');
-    await until(win, `[...document.querySelectorAll('.ws-name')].some(e => e.textContent === 'hanobi') && ![...document.querySelectorAll('.ws-name')].some(e => e.textContent === 'Chats')`, 'code view lists folders only');
+    await until(win, `[...document.querySelectorAll('.ws-name')].some(e => e.textContent === 'orin') && ![...document.querySelectorAll('.ws-name')].some(e => e.textContent === 'Chats')`, 'code view lists folders only');
     await clickText(win, '.thread-row', 'Parse the release notes');
     await until(win, `document.querySelectorAll('.pane').length === 1`, 'thread opens in one pane');
     await click(win, '[title="New split pane (⌘D)"]');
@@ -327,7 +329,7 @@ app.whenReady().then(async () => {
     })()`);
     await until(win, `(${JSON.stringify(listed)}).at(-1) === [...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row .thread-title')][0].textContent`, 'dragging a conversation reorders the list');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, ghost-text suggestion, inline completion, suggestion chips, / commands, @ file mentions, saved messages, live reply with approval, elapsed time and background work, themed access and effort pickers, new conversation, model picker, settings, connector connect and disconnect, connector presets, theme palettes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, Mermaid diagrams, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
+    process.stdout.write('Smoke passed: home, ghost-text suggestion, inline completion, suggestion chips, / commands, @ file mentions, saved messages, live reply with approval, elapsed time and background work, themed access and effort pickers, new conversation, model picker, settings, connector connect and disconnect, connector presets, dark and light themes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, Mermaid diagrams, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
     app.exit(0);
   } catch (error) {
     if (errors.length) console.error('Console errors:\n' + errors.join('\n')); process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }

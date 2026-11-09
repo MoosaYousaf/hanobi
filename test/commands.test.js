@@ -13,7 +13,7 @@ const tmp = prefix => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), pref
 const write = (file, text) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
 
 test('commands: file commands and skills are listed; other models get them expanded, Claude Code runs its own', async () => {
-  const home = tmp('hanobi-home-'), ws = tmp('hanobi-ws-'), saved = process.env.HOME;
+  const home = tmp('orin-home-'), ws = tmp('orin-ws-'), saved = process.env.HOME;
   write(path.join(home, '.claude/commands/review.md'), '---\ndescription: Review code\n---\nHome review of $ARGUMENTS');
   write(path.join(ws, '.claude/commands/review.md'), '---\ndescription: Workspace review\nargument-hint: <path>\n---\nReview $ARGUMENTS carefully. First: $1');
   write(path.join(home, '.codex/prompts/plan.md'), 'Write a plan.');
@@ -37,7 +37,7 @@ test('commands: file commands and skills are listed; other models get them expan
 });
 
 test('mentions: workspace file search skips build folders; @paths become file parts read in place', async () => {
-  const ws = tmp('hanobi-ws-'), out = tmp('hanobi-out-'), threads = tmp('hanobi-files-');
+  const ws = tmp('orin-ws-'), out = tmp('orin-out-'), threads = tmp('orin-files-');
   try {
     write(path.join(ws, 'src/app.js'), 'console.log(1)');
     write(path.join(ws, 'src/my file.md'), '# Notes');
@@ -58,7 +58,7 @@ test('mentions: workspace file search skips build folders; @paths become file pa
 });
 
 test('suggestions: a CLI without its own suggestions answers one short request with no session or tools', async () => {
-  const home = tmp('hanobi-home-'), bin = path.join(home, '.local/bin'), saved = process.env.HOME;
+  const home = tmp('orin-home-'), bin = path.join(home, '.local/bin'), saved = process.env.HOME;
   // Prints the arguments and the stdin prompt back as the agent message.
   write(path.join(bin, 'codex'), `#!/usr/bin/env node
 let input = ''; process.stdin.on('data', c => input += c).on('end', () => {

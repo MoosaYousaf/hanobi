@@ -1,4 +1,4 @@
-# Releasing Hanobi
+# Releasing Orin
 
 ## Unsigned builds
 
@@ -25,8 +25,8 @@ The release script sets `forceCodeSigning`, so it fails if it cannot find the ce
 Check the result:
 
 ```sh
-codesign --verify --deep --strict --verbose=2 dist/release/mac/Hanobi.app
-spctl --assess --type execute --verbose dist/release/mac/Hanobi.app
+codesign --verify --deep --strict --verbose=2 dist/release/mac/Orin.app
+spctl --assess --type execute --verbose dist/release/mac/Orin.app
 ```
 
 `spctl` must say `accepted` and `source=Notarized Developer ID`.
@@ -37,8 +37,8 @@ spctl --assess --type execute --verbose dist/release/mac/Hanobi.app
 2. Tag the commit and push the tag: `git tag v<version>` and `git push --tags`.
 3. The `Release` workflow (`.github/workflows/release.yml`) runs the tests, builds unsigned DMG and ZIP files for Intel and Apple Silicon, and makes the GitHub release.
 
-Hanobi's update check reads the latest release through the GitHub API without a token. It works only when the repository is public. A private repository answers 404, and Settings shows "No public release yet". GitHub Actions on a private repository uses the free monthly minutes. A macOS minute counts as ten.
+Orin's update check reads the latest release through the GitHub API without a token. It works only when the repository is public. A private repository answers 404, and Settings shows "No public release yet". GitHub Actions on a private repository uses the free monthly minutes. A macOS minute counts as ten.
 
 ## Updates without signing
 
-Squirrel.Mac (the macOS auto-updater) installs updates only for signed apps. Hanobi is free and unsigned, so it checks GitHub Releases once a day and links to a newer release. From source, `git pull` and `npm run install:mac` update the installed app.
+Squirrel.Mac (the macOS auto-updater) installs updates only for signed apps. Orin is free and unsigned, so it checks GitHub Releases once a day and links to a newer release. From source, `git pull` and `npm run install:mac` update the installed app.

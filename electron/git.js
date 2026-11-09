@@ -109,7 +109,7 @@ const pull = async cwd => git(await root(cwd), ['pull', '--ff-only'], NETWORK);
 // A checkpoint is a tree of every tracked and untracked file that .gitignore does not exclude.
 // Git keeps unreferenced trees for at least two weeks (gc.pruneExpire), so older checkpoints can be gone.
 async function withIndex(top, fn) {
-  const index = path.join(os.tmpdir(), `hanobi-index-${crypto.randomUUID()}`);
+  const index = path.join(os.tmpdir(), `orin-index-${crypto.randomUUID()}`);
   try { return await fn({ GIT_INDEX_FILE: index }); } finally { await fs.rm(index, { force: true }); }
 }
 

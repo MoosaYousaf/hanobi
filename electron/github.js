@@ -2,7 +2,7 @@ const { execFile } = require('node:child_process');
 const { cliPath } = require('./providers/cli');
 const { root, status } = require('./git');
 
-// Pull requests through the GitHub CLI (gh). gh keeps the sign-in, so Hanobi stores no GitHub token.
+// Pull requests through the GitHub CLI (gh). gh keeps the sign-in, so Orin stores no GitHub token.
 const FIELDS = 'number,title,url,state,isDraft,reviewDecision,headRefName,baseRefName,author,updatedAt';
 
 function gh(cwd, args, { input, timeout = 60000 } = {}) {

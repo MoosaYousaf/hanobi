@@ -2,9 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Folder, FileText, Sparkles, SquareSlash, TerminalSquare } from 'lucide-react';
 import { call } from '../store.js';
 
-// The / and @ menus of the composer. "/" at the start of the message lists Hanobi's own commands, then the
+// The / and @ menus of the composer. "/" at the start of the message lists Orin's own commands, then the
 // custom commands and skills found on disk (see electron/commands.js). "@" before a word searches the workspace files.
-// Hanobi's commands run in the app for every model; file commands go to the model (Claude Code runs its own).
+// Orin's commands run in the app for every model; file commands go to the model (Claude Code runs its own).
 export const BUILTINS = [
   { name: 'clear', description: 'Start a new conversation with the same model. This one stays in the sidebar.' },
   { name: 'model', description: 'Choose the model.' },
@@ -59,7 +59,7 @@ export function useMenuItems(open, workspaceId) {
 }
 
 const ICONS = { builtin: SquareSlash, command: TerminalSquare, skill: Sparkles, file: FileText, folder: Folder };
-const SOURCE = { builtin: 'Hanobi', command: 'Command', skill: 'Skill' };
+const SOURCE = { builtin: 'Orin', command: 'Command', skill: 'Skill' };
 
 export function CommandMenu({ open, items, index, onPick, onHover }) {
   const list = useRef(null);

@@ -144,7 +144,7 @@ export function parseTable(text, separator = ',') {
 }
 
 export function SnippetPreview({ kind, text }) {
-  // Scripts stay off here, inside Hanobi's window. Run opens the page with scripts in its own window.
+  // Scripts stay off here, inside Orin's window. Run opens the page with scripts in its own window.
   if (kind === 'html') return <iframe className="snippet-frame" sandbox="" srcDoc={text} title="HTML preview" />;
   if (kind === 'svg') return <div className="snippet-image"><img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`} alt="SVG preview" /></div>;
   if (kind === 'mermaid') return <MermaidPreview text={text} />;
@@ -159,7 +159,7 @@ export function SnippetPreview({ kind, text }) {
   );
 }
 
-// Mermaid diagrams render in Hanobi's own page with mermaid's strict mode (no scripts, no click handlers, sanitized
+// Mermaid diagrams render in Orin's own page with mermaid's strict mode (no scripts, no click handlers, sanitized
 // labels). The library loads on the first diagram, so it does not weigh on startup. While a reply streams, the last
 // diagram that parsed stays on screen.
 const darkScheme = window.matchMedia('(prefers-color-scheme: dark)');
@@ -178,7 +178,7 @@ function MermaidPreview({ text }) {
         const css = getComputedStyle(document.documentElement), v = name => css.getPropertyValue(name).trim();
         mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', darkMode: dark, fontFamily: getComputedStyle(document.body).fontFamily,
           themeVariables: { background: v('--surface'), primaryColor: v('--raised'), primaryTextColor: v('--text'), primaryBorderColor: v('--border-strong'), secondaryColor: v('--user'), tertiaryColor: v('--surface'), lineColor: v('--text-3'), textColor: v('--text'), mainBkg: v('--raised'), nodeBorder: v('--border-strong'), clusterBkg: v('--surface'), edgeLabelBackground: v('--surface') } });
-        const { svg } = await mermaid.render(`hanobi-mermaid-${++mermaidCount}`, text);
+        const { svg } = await mermaid.render(`orin-mermaid-${++mermaidCount}`, text);
         if (live) { setSvg(svg); setError(''); }
       } catch (e) { if (live) setError(String(e?.message || e).split('\n')[0]); }
     }, 200);

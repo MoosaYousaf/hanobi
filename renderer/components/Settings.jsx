@@ -43,7 +43,7 @@ function ConnectionForm({ initial, onDone }) {
           <input type="password" value={form.apiKey || ''} onChange={field('apiKey')} placeholder={initial?.hasKey ? '••••••••' : 'Paste your key'} autoComplete="off" />
         </label>
       ) : null}
-      {preset.route === 'local' ? <p className="hint">Start {preset.name} first. Hanobi lists the models it has downloaded.</p> : null}
+      {preset.route === 'local' ? <p className="hint">Start {preset.name} first. Orin lists the models it has downloaded.</p> : null}
       <p className="hint">Keys are encrypted with your macOS Keychain and stay on this Mac.</p>
       <div className="form-actions"><button className="btn" onClick={onDone}>Cancel</button><button className="btn primary" onClick={save}>Save and test</button></div>
     </div>
@@ -59,7 +59,7 @@ function ModelsPane() {
   return (
     <>
       <h2>Models</h2>
-      <p className="lede">Use subscriptions through their official CLIs, add API keys, or point Hanobi at a local model server.</p>
+      <p className="lede">Use subscriptions through their official CLIs, add API keys, or point Orin at a local model server.</p>
       <h3>Subscriptions <button className="icon-btn sm" title="Look for installed CLIs again" onClick={guard(() => call('clis:rescan'))}><RefreshCw size={12} /></button></h3>
       <ul className="rows">
         {clis.map(c => (
@@ -200,14 +200,6 @@ function ConnectorsPane() {
   );
 }
 
-const palettes = [
-  { id: 'hanobi', label: 'Hanobi', color: '#e0532c' },
-  { id: 'gemini', label: 'Gemini style', color: '#1a73e8' },
-  { id: 'chatgpt', label: 'ChatGPT style', color: '#10a37f' },
-  { id: 'deepseek', label: 'DeepSeek style', color: '#4d6bfe' },
-  { id: 'custom', label: 'Custom' }
-];
-
 // Accelerator text from a key press: modifiers first, then the key, in Electron's format.
 function accelerator(e) {
   if (['Meta', 'Control', 'Alt', 'Shift'].includes(e.key)) return null;
@@ -227,11 +219,11 @@ function DesktopSection() {
   return (
     <>
       <h3>Desktop</h3>
-      <label className="check"><input type="checkbox" checked={desk.notify} onChange={e => setPref({ notify: e.target.checked })} /> Notify me when a reply finishes or needs approval while Hanobi is in the background</label>
-      <label className="check"><input type="checkbox" disabled={!desk.packaged} checked={desk.openAtLogin} onChange={e => setPref({ openAtLogin: e.target.checked })} /> Open Hanobi at login</label>
-      {!desk.packaged ? <p className="hint">Open at login works in the installed app. Run <code>npm run install:mac</code> to install Hanobi in Applications.</p> : null}
+      <label className="check"><input type="checkbox" checked={desk.notify} onChange={e => setPref({ notify: e.target.checked })} /> Notify me when a reply finishes or needs approval while Orin is in the background</label>
+      <label className="check"><input type="checkbox" disabled={!desk.packaged} checked={desk.openAtLogin} onChange={e => setPref({ openAtLogin: e.target.checked })} /> Open Orin at login</label>
+      {!desk.packaged ? <p className="hint">Open at login works in the installed app. Run <code>npm run install:mac</code> to install Orin in Applications.</p> : null}
       <div className="shortcut-row">
-        <span>Show Hanobi from any app</span>
+        <span>Show Orin from any app</span>
         <button className={`btn sm shortcut ${recording ? 'on' : ''}`} onClick={() => setRecording(true)} onBlur={() => setRecording(false)}
           onKeyDown={e => { if (!recording) return; e.preventDefault(); if (e.key === 'Escape') return setRecording(false); const a = accelerator(e); if (a) { setRecording(false); setPref({ shortcut: a }); } }}>
           {recording ? 'Press keys…' : desk.shortcut ? shortcutLabel(desk.shortcut) : 'Off'}
@@ -241,11 +233,11 @@ function DesktopSection() {
       {desk.shortcutError ? <p className="hint warn">{desk.shortcutError}</p> : null}
       <h3>Updates</h3>
       <div className="shortcut-row">
-        <span>Hanobi {desk.version}{u?.newer ? <> · <strong>{u.latest}</strong> is available</> : u?.latest ? ' · up to date' : ''}</span>
+        <span>Orin {desk.version}{u?.newer ? <> · <strong>{u.latest}</strong> is available</> : u?.latest ? ' · up to date' : ''}</span>
         {u?.newer ? <button className="btn sm" onClick={guard(() => call('update:open'))}>Get {u.latest}</button> : null}
         <button className="btn sm" disabled={checking} onClick={check}>{checking ? 'Checking…' : 'Check now'}</button>
       </div>
-      <p className="hint">{u?.error ? `${u.error} ` : ''}Hanobi checks GitHub Releases once a day. It does not install updates itself, because unsigned apps cannot update in place. From source, run <code>git pull</code> and <code>npm run install:mac</code>.</p>
+      <p className="hint">{u?.error ? `${u.error} ` : ''}Orin checks GitHub Releases once a day. It does not install updates itself, because unsigned apps cannot update in place. From source, run <code>git pull</code> and <code>npm run install:mac</code>.</p>
     </>
   );
 }
@@ -262,7 +254,7 @@ function VoiceSection() {
     <>
       <h3>Voice input</h3>
       <p className="hint">Click the microphone to start and click again to stop, or hold it to talk and release to stop. <kbd>⌘⇧D</kbd> works the same way, and Esc cancels. The words show in the message box while you speak. Apple speech recognition runs on this Mac; audio is not sent anywhere. The first use asks for the Speech Recognition permission.</p>
-      {!voice.available ? <p className="hint warn">The speech helper is missing from this copy of Hanobi. Install the Xcode Command Line Tools (xcode-select --install), then run npm run build.</p> : null}
+      {!voice.available ? <p className="hint warn">The speech helper is missing from this copy of Orin. Install the Xcode Command Line Tools (xcode-select --install), then run npm run build.</p> : null}
       <label className="field voice-language"><span>Language you speak</span>
         <select className="mini-select" value={voice.language} onChange={e => setVoice({ language: e.target.value })}>
           {LANGUAGES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
@@ -281,17 +273,8 @@ function GeneralPane() {
       <h2>General</h2>
       <h3>Appearance</h3>
       <div className="segmented">
-        {['system', 'light', 'dark'].map(t => <button key={t} className={prefs.theme === t ? 'on' : ''} onClick={() => setPref({ theme: t })}>{t[0].toUpperCase() + t.slice(1)}</button>)}
+        {['dark', 'light', 'system'].map(t => <button key={t} className={prefs.theme === t ? 'on' : ''} onClick={() => setPref({ theme: t })}>{t[0].toUpperCase() + t.slice(1)}</button>)}
       </div>
-      <h3>Theme</h3>
-      <div className="palettes">
-        {palettes.map(p => (
-          <button key={p.id} className={`palette ${(prefs.palette || 'hanobi') === p.id ? 'on' : ''}`} onClick={() => setPref({ palette: p.id })}>
-            <span className="palette-swatch" style={{ background: p.id === 'custom' ? prefs.accent : p.color }} />{p.label}
-          </button>
-        ))}
-      </div>
-      {prefs.palette === 'custom' ? <label className="palette-custom">Accent color <input type="color" value={prefs.accent || '#e0532c'} onChange={e => setPref({ accent: e.target.value })} /></label> : null}
       <h3>Suggested replies</h3>
       <label className="check"><input type="checkbox" checked={!!prefs.suggestReplies} onChange={e => setPref({ suggestReplies: e.target.checked })} /> Suggest the next message for every model</label>
       <p className="hint">Claude Code makes one suggestion of its own, at no extra cost, when it has enough context. With this on, every model makes up to three: each reply makes one extra short request to the same model. API models use tokens; Claude Code and Codex use a little of your plan; GitHub Copilot uses one request of your plan unless the model is free on it. Suggestions show as buttons above the message box, and the first shows in the empty box. While you type, the rest of a matching suggestion or earlier message shows in gray. Press Tab to use it.</p>

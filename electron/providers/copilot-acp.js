@@ -2,7 +2,7 @@ const { spawn } = require('node:child_process');
 
 // Copilot "Ask first" runs `copilot --acp`: Agent Client Protocol, JSON-RPC lines on stdio. With allow_all off,
 // Copilot asks before tools, paths, and URLs with session/request_permission. Session ids are the same as `--session-id`.
-// Hanobi declares no fs or terminal capability, so Copilot uses its own tools and asks for permission.
+// Orin declares no fs or terminal capability, so Copilot uses its own tools and asks for permission.
 const KINDS = { read: 'Read', edit: 'Edit', delete: 'Delete', move: 'Move', search: 'Search', execute: 'Command', fetch: 'Fetch', think: 'Think' };
 
 const toolName = call => KINDS[call.kind] || call.title || 'Tool';
@@ -32,7 +32,7 @@ function apply(update, draft, state = {}) {
   }
 }
 
-// The chosen option of a permission request. Hanobi keeps "always" itself, so only the once options are used.
+// The chosen option of a permission request. Orin keeps "always" itself, so only the once options are used.
 function choose(options, answer) {
   const order = answer === 'deny' ? ['reject_once', 'reject_always'] : ['allow_once', 'allow_always'];
   const option = order.map(kind => options.find(o => o.kind === kind)).find(Boolean);
@@ -55,7 +55,7 @@ function run({ executable, env, cwd, input, resume, model, effort, draft, signal
 
   // A permission request waits for the user; anything else gets an error so the turn does not hang.
   const serve = message => {
-    if (message.method !== 'session/request_permission' || !approve) { write({ id: message.id, error: { code: -32601, message: `Hanobi does not handle ${message.method}.` } }); return; }
+    if (message.method !== 'session/request_permission' || !approve) { write({ id: message.id, error: { code: -32601, message: `Orin does not handle ${message.method}.` } }); return; }
     const { toolCall = {}, options = [] } = message.params || {};
     const callId = toolCall.toolCallId;
     const shown = draft.parts.find(p => p.type === 'tool' && p.id === callId);
@@ -111,7 +111,7 @@ function run({ executable, env, cwd, input, resume, model, effort, draft, signal
   signal.addEventListener('abort', stop, { once: true });
 
   const turn = (async () => {
-    await request('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false }, clientInfo: { name: 'hanobi', title: 'Hanobi', version: '1' } });
+    await request('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false }, clientInfo: { name: 'orin', title: 'Orin', version: '1' } });
     let session;
     if (resume) {
       loading = true;

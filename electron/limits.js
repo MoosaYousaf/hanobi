@@ -14,7 +14,7 @@ const run = (file, args, timeout = 15000) => new Promise((resolve, reject) => {
 const percent = n => Math.max(0, Math.min(100, Math.round(Number(n) || 0)));
 const span = minutes => (minutes === 300 ? 'Session (5 hours)' : minutes === 10080 ? 'Week' : minutes % 1440 === 0 ? `${minutes / 1440} days` : `${Math.round(minutes / 60)} hours`);
 
-// Claude Code keeps its sign-in in the Keychain item "Claude Code-credentials". Hanobi only reads the access token and
+// Claude Code keeps its sign-in in the Keychain item "Claude Code-credentials". Orin only reads the access token and
 // never refreshes it: a refresh would replace the CLI's refresh token. The token stays in main.
 async function claudeToken() {
   const raw = await run('/usr/bin/security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w']).catch(() => '');

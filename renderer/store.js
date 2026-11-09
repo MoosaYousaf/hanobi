@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 
 // One external store for the whole window. Components subscribe to the slice they render,
 // so a streaming token re-renders only the live message.
-const api = window.hanobi;
+const api = window.orin;
 export const call = (channel, ...args) => api.invoke(channel, ...args);
 
 let state = {
@@ -159,7 +159,7 @@ export function closeDialog(result) {
 }
 
 export async function deleteThread(thread) {
-  if (!await askConfirm({ title: `Delete “${thread.title}”?`, message: 'The conversation is deleted from Hanobi. You cannot undo this.', confirmLabel: 'Delete', danger: true })) return;
+  if (!await askConfirm({ title: `Delete “${thread.title}”?`, message: 'The conversation is deleted from Orin. You cannot undo this.', confirmLabel: 'Delete', danger: true })) return;
   await call('thread:delete', thread.id);
   closePane(thread.id);
 }

@@ -5,7 +5,7 @@ import { modelLabel } from '../labels.js';
 import { Message, LiveMessage } from './Message.jsx';
 import { ThreadContext } from './Files.jsx';
 import { Composer, setDraft } from './Composer.jsx';
-import { Spark } from './Spark.jsx';
+import { Mark } from './Mark.jsx';
 
 const PAGE = 80;
 
@@ -86,7 +86,7 @@ export function ThreadView({ threadId, panes = 1, index = 0 }) {
           {thread.messages.length > count ? <button className="load-more" onClick={() => setCount(count + PAGE)}>Show earlier messages</button> : null}
           {!thread.messages.length && !running ? (
             <div className="empty">
-              <Spark size={34} className="empty-spark" />
+              <Mark size={34} className="empty-mark" />
               <h1>What are we working on?</h1>
               <p>{currentLabel} in <strong>{workspace.name}</strong>. Switch models below at any time, even mid-conversation.</p>
             </div>
@@ -108,8 +108,8 @@ export function Home() {
     <div className="thread">
       <header className="topbar drag">{!sidebar ? <button className="icon-btn no-drag" onClick={() => setUi({ sidebar: true })}><PanelLeftOpen size={16} /></button> : null}</header>
       <div className="home">
-        <Spark size={44} className="empty-spark" />
-        <h1>Hanobi</h1>
+        <Mark size={44} className="empty-mark" />
+        <h1>Orin</h1>
         <p>One window for every model you use: your Claude and ChatGPT subscriptions through their CLIs, API keys, and local models, with MCP connectors.</p>
         {ready
           ? <button className="btn primary lg" onClick={guard(() => newThread())}>New conversation</button>

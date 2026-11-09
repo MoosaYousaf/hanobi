@@ -24,7 +24,7 @@ function cliPath(name, refresh = false) {
   return found;
 }
 
-// Claude Code accepts Hanobi's MCP servers directly. OAuth servers are skipped: the CLI signs in to those itself.
+// Claude Code accepts Orin's MCP servers directly. OAuth servers are skipped: the CLI signs in to those itself.
 function claudeMcpConfig(servers) {
   const mcpServers = {};
   for (const s of servers) {
@@ -41,7 +41,7 @@ function command(cli, { sessionId, model = '', effort = '', mode = 'auto', chat 
   if (chat && cli !== 'claude') mode = 'read';
   if (cli === 'claude') {
     // The prompt goes to stdin as a stream-json message, and permission prompts and questions come back as control requests.
-    // In "ask" Hanobi shows the permission prompts; in the other modes it denies them, as the CLI does without a person.
+    // In "ask" Orin shows the permission prompts; in the other modes it denies them, as the CLI does without a person.
     const permission = chat ? ['--tools', 'Read,Glob,Grep'] : { ask: [], default: [], read: ['--permission-mode', 'plan'], auto: ['--permission-mode', 'acceptEdits'], full: ['--permission-mode', 'bypassPermissions'] }[mode];
     return ['-p', '--input-format', 'stream-json', '--permission-prompt-tool', 'stdio', '--output-format', 'stream-json', '--include-partial-messages', '--verbose', '--prompt-suggestions', ...permission, ...modelArgs, ...(effort ? ['--effort', effort] : []), ...(sessionId ? ['--resume', sessionId] : []), ...claudeMcpConfig(mcpServers)];
   }
@@ -149,7 +149,7 @@ function runTurn({ preset, thread, history, prompt, cwd, chat = false, mcpServer
   const input = thread.replay || (!thread.sessionId && history.length) ? replayPrompt(history, prompt) : prompt;
   const env = { ...process.env, PATH: searchPath().join(path.delimiter), NO_COLOR: '1', COPILOT_AUTO_UPDATE: 'false' };
   // Without this, Claude Code skips suggestions behind a server flag, near plan limits, and after many unused ones.
-  // Each Hanobi turn is a new process, so Claude Code never sees that a suggestion was used.
+  // Each Orin turn is a new process, so Claude Code never sees that a suggestion was used.
   if (preset.cli === 'claude') env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION = '1';
   if (preset.cli === 'codex' && thread.mode === 'ask' && !chat) return codexServer.run({ executable, env, cwd, input, resume, model: thread.model, effort: thread.effort, draft, signal, onSession, approve, question });
   if (preset.cli === 'copilot' && thread.mode === 'ask' && !chat) return copilotAcp.run({ executable, env, cwd, input, resume, model: thread.model, effort: thread.effort, draft, signal, onSession, approve });
@@ -166,7 +166,7 @@ function runTurn({ preset, thread, history, prompt, cwd, chat = false, mcpServer
   const control = event => {
     if (event.type === 'control_cancel_request') { asking.get(event.request_id)?.(); asking.delete(event.request_id); return; }
     const { request_id, request = {} } = event;
-    if (request.subtype !== 'can_use_tool') { reply(request_id, { subtype: 'error', error: `Hanobi does not handle ${request.subtype} requests.` }); return; }
+    if (request.subtype !== 'can_use_tool') { reply(request_id, { subtype: 'error', error: `Orin does not handle ${request.subtype} requests.` }); return; }
     const callId = request.tool_use_id;
     const allow = updatedInput => reply(request_id, { subtype: 'success', response: { behavior: 'allow', updatedInput } });
     const deny = message => reply(request_id, { subtype: 'success', response: { behavior: 'deny', message } });
@@ -218,7 +218,7 @@ function runTurn({ preset, thread, history, prompt, cwd, chat = false, mcpServer
   signal.addEventListener('abort', stop, { once: true });
   // 'close' waits for every holder of the output pipes. A background process that the agent started (a dev server,
   // `npm start`) inherits them, so the turn also ends shortly after the CLI exits, or a little after its result
-  // event when the CLI stays open for its own background work. Hanobi leaves such processes running.
+  // event when the CLI stays open for its own background work. Orin leaves such processes running.
   return new Promise((resolve, reject) => {
     let done = false;
     const finish = (code, killedBy) => {

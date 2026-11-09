@@ -38,7 +38,7 @@ function fakeOpenAI() {
 const memorySecrets = () => { const data = {}; return { get: k => data[k] ?? null, has: k => k in data, set: (k, v) => { if (v == null) delete data[k]; else data[k] = v; }, available: () => true }; };
 
 test('an OpenAI-compatible model calls an MCP tool after approval and the reply is saved', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hanobi-api-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'orin-api-'));
   const fake = await fakeOpenAI();
   const events = [];
   const store = new Store(path.join(root, 'data.json'));
@@ -85,7 +85,7 @@ test('an OpenAI-compatible model calls an MCP tool after approval and the reply 
 });
 
 test('a denied tool call returns a refusal to the model', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hanobi-deny-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'orin-deny-'));
   const fake = await fakeOpenAI();
   const store = new Store(path.join(root, 'data.json'));
   const secrets = memorySecrets();
@@ -114,7 +114,7 @@ test('a denied tool call returns a refusal to the model', async () => {
 });
 
 test('suggested replies: one extra request after an API reply, saved on that reply when the setting is on', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hanobi-suggest-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'orin-suggest-'));
   const fake = await fakeOpenAI();
   const store = new Store(path.join(root, 'data.json'));
   const secrets = memorySecrets();

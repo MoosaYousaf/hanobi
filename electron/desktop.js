@@ -1,5 +1,5 @@
 // Desktop app behavior: the window comes back where it was, background replies notify, a global shortcut
-// shows Hanobi from any app, and a free update check reads GitHub Releases. Electron objects are passed in.
+// shows Orin from any app, and a free update check reads GitHub Releases. Electron objects are passed in.
 const RELEASES = 'https://api.github.com/repos/MoosaYousaf/hanobi/releases/latest';
 const DEFAULT_SHORTCUT = 'Alt+Space';
 
@@ -36,13 +36,13 @@ async function checkForUpdate(current, fetchJson = defaultFetch) {
 }
 
 async function defaultFetch(url) {
-  const response = await fetch(url, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Hanobi' }, signal: AbortSignal.timeout(10000) });
+  const response = await fetch(url, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Orin' }, signal: AbortSignal.timeout(10000) });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
 }
 
 // Background attention: a notification, a Dock badge with the count, and one Dock bounce for approvals.
-// Everything clears when a Hanobi window gets focus.
+// Everything clears when a Orin window gets focus.
 class Attention {
   constructor({ app, Notification, isFocused, show, enabled }) {
     Object.assign(this, { app, Notification, isFocused, show, enabled });

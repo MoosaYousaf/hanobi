@@ -133,7 +133,7 @@ export function completion(text, suggestions, messages) {
 const drafts = new Map();
 // A mounted composer listens, so a draft set from outside (rewind, a suggestion) shows at once.
 export const getDraft = threadId => drafts.get(threadId) ?? '';
-export const setDraft = (threadId, text) => { drafts.set(threadId, text); window.dispatchEvent(new CustomEvent('hanobi-draft', { detail: threadId })); };
+export const setDraft = (threadId, text) => { drafts.set(threadId, text); window.dispatchEvent(new CustomEvent('orin-draft', { detail: threadId })); };
 
 export function Composer({ thread, workspace, modelLabel }) {
   const running = useStore(s => !!s.live[thread.id]);
@@ -179,21 +179,21 @@ export function Composer({ thread, workspace, modelLabel }) {
   }, [text]);
   useEffect(() => {
     const onDraft = e => { if (e.detail === thread.id) { setText(drafts.get(thread.id) ?? ''); input.current?.focus(); } };
-    window.addEventListener('hanobi-draft', onDraft);
-    return () => window.removeEventListener('hanobi-draft', onDraft);
+    window.addEventListener('orin-draft', onDraft);
+    return () => window.removeEventListener('orin-draft', onDraft);
   }, [thread.id]);
   // Any file type. Main copies it into the thread's folder; a pasted file without a path is sent as bytes.
   const add = parts => setFiles(list => [...list, ...parts].slice(0, MAX_FILES));
   const attach = guard(async list => {
     for (const file of [...list]) {
       if (!isCli && file.type?.startsWith('image/') && file.size > MAX_IMAGE) throw new Error(`${file.name} is larger than 5 MB, the image limit for API models.`);
-      const source = window.hanobi.pathFor?.(file);
+      const source = window.orin.pathFor?.(file);
       add(source ? await call('files:attach', thread.id, [source]) : [await call('files:attach-data', thread.id, await readData(file))]);
     }
   });
   const pick = guard(async () => add(await call('files:pick', thread.id)));
-  // Hanobi's own commands run here, for every model, and never go to the model.
-  const signal = name => window.dispatchEvent(new CustomEvent('hanobi-picker', { detail: `${thread.id}:${name}` }));
+  // Orin's own commands run here, for every model, and never go to the model.
+  const signal = name => window.dispatchEvent(new CustomEvent('orin-picker', { detail: `${thread.id}:${name}` }));
   const runBuiltin = guard(async ({ name, args }) => {
     update(''); setMenu(null);
     if (name === 'clear') {
@@ -212,7 +212,7 @@ export function Composer({ thread, workspace, modelLabel }) {
     if (name === 'skills' || name === 'changes') setUi({ panel: name === 'skills' ? 'skills' : 'git' });
     if (name === 'settings') setUi({ settings: 'models' });
   });
-  // A picked item: Hanobi commands without arguments run at once; other commands and files go into the text.
+  // A picked item: Orin commands without arguments run at once; other commands and files go into the text.
   const choose = item => {
     const el = input.current;
     if (menu.kind === 'slash') {

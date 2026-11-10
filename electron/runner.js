@@ -13,6 +13,7 @@ const openai = require('./providers/openai');
 const { contextWindow } = require('./providers/usage');
 const { attachmentBlock, mediaType } = require('./files');
 const overseer = require('./overseer');
+const codexServer = require('./providers/codex-server');
 
 const UPDATE_MS = 60;
 
@@ -55,8 +56,8 @@ function validAnswers(questions, answers) {
 }
 
 class Runner {
-  constructor({ store, secrets, mcp, send, files, limits }) {
-    Object.assign(this, { store, secrets, mcp, send, files, limits });
+  constructor({ store, secrets, mcp, send, files, limits, catalog }) {
+    Object.assign(this, { store, secrets, mcp, send, files, limits, catalog });
     this.runs = new Map(); // threadId -> { controller, draft }
     this.approvals = new Map(); // approvalId -> resolve
   }
@@ -76,19 +77,36 @@ class Runner {
     if (!connection) throw new Error('This model connection was removed. Choose another model.');
     return { connection, preset: presets[connection.preset] };
   }
+  // A CLI's menu is its loaded list (Claude Code from the model catalog, Codex from the CLI) after "CLI default",
+  // else the built-in list. Models released in the last 14 days are marked isNew.
   models(connectionId) {
     const { preset } = this.resolve(connectionId);
-    if (preset.kind === 'cli') return preset.models;
-    return this.store.data.modelCache[connectionId]?.models || [];
+    const cached = this.store.data.modelCache[connectionId]?.models;
+    const list = preset.kind === 'cli' ? (cached?.length ? [preset.models[0], ...cached.filter(m => m.id)] : preset.models) : cached || [];
+    return this.catalog ? list.map(m => (m.id && !m.isNew && this.catalog.isNew(m.id) ? { ...m, isNew: true } : m)) : list;
   }
   async refreshModels(connectionId) {
     const { connection, preset } = this.resolve(connectionId);
-    if (preset.kind === 'cli') return preset.models;
-    const key = this.secrets.get(`key:${connectionId}`);
-    const models = preset.kind === 'anthropic' ? await anthropic.listModels(key) : await openai.listModels(connection.baseURL || preset.baseURL, key, preset.modelsURL);
+    let models;
+    if (preset.kind === 'cli') {
+      if (preset.cli === 'claude' && this.catalog) { await this.catalog.refresh({ force: true }); models = this.catalog.claudeModels(); }
+      else if (preset.cli === 'codex') models = await codexServer.listModels({ executable: cli.cliPath('codex'), env: { ...process.env, PATH: cli.searchPath().join(path.delimiter) } });
+      if (!models?.length) return this.models(connectionId);
+    } else {
+      const key = this.secrets.get(`key:${connectionId}`);
+      models = preset.kind === 'anthropic' ? await anthropic.listModels(key) : await openai.listModels(connection.baseURL || preset.baseURL, key, preset.modelsURL);
+    }
     this.store.data.modelCache[connectionId] = { at: Date.now(), models };
     this.store.save();
-    return models;
+    return this.models(connectionId);
+  }
+  // Daily: the catalog and the menus of the installed CLIs that can list models. Failures keep the last lists.
+  async refreshCatalog() {
+    if (this.catalog) await this.catalog.refresh().catch(() => {});
+    for (const c of this.connections().filter(c => c.kind === 'cli' && c.ready && ['claude', 'codex'].includes(presets[c.preset].cli))) {
+      const at = this.store.data.modelCache[c.id]?.at || 0;
+      if (Date.now() - at > 24 * 60 * 60 * 1000) await this.refreshModels(c.id).catch(() => {});
+    }
   }
 
   // Changing provider drops the CLI session; the next turn replays the transcript instead.
@@ -101,7 +119,7 @@ class Runner {
     const { connection, preset } = this.resolve(connectionId);
     const mode = mapMode(next.mode ?? thread.baseMode ?? thread.mode, preset);
     const effort = preset.efforts.includes(next.effort ?? thread.effort) ? (next.effort ?? thread.effort) : '';
-    const settings = validateSettings(connection, { model: next.model ?? thread.model, effort, mode });
+    const settings = validateSettings(connection, { model: next.model ?? thread.model, effort, mode }, this.models(connectionId));
     const switched = connectionId !== thread.connectionId;
     const overseerOn = 'overseer' in next ? !!next.overseer : 'model' in next || 'connectionId' in next ? false : !!thread.overseer;
     this.store.update(threadId, { connectionId, ...settings, baseMode: 'mode' in next ? settings.mode : thread.baseMode ?? settings.mode, overseer: overseerOn,
@@ -114,7 +132,7 @@ class Runner {
   overseerCandidates({ all = false } = {}) {
     const prefs = this.store.data.preferences.overseer || {};
     const used = new Set(this.store.data.threads.flatMap(t => t.messages.filter(m => m.role === 'assistant' && !m.error && m.connectionId).map(m => m.connectionId)));
-    return overseer.candidates({ connections: this.connections(), modelsOf: id => this.models(id), presets, prefs, used, all });
+    return overseer.candidates({ connections: this.connections(), modelsOf: id => this.models(id), presets, prefs, used, all, tierOf: this.catalog && (id => this.catalog.tier(id)), priceOf: this.catalog && (id => this.catalog.price(id)) });
   }
   // Picks this turn's model and moves the thread to it. Returns the route, or null when the thread keeps its model.
   async route(threadId, { text, workspace, files, history, signal }) {
@@ -129,7 +147,7 @@ class Runner {
     if (!route) return null;
     const { connection, preset } = this.resolve(route.connectionId);
     const switched = route.connectionId !== thread.connectionId;
-    const settings = validateSettings(connection, { model: route.model, effort: preset.efforts.includes(route.effort) ? route.effort : '', mode: mapMode(thread.baseMode ?? thread.mode, preset) });
+    const settings = validateSettings(connection, { model: route.model, effort: preset.efforts.includes(route.effort) ? route.effort : '', mode: mapMode(thread.baseMode ?? thread.mode, preset) }, this.models(route.connectionId));
     this.store.update(threadId, { connectionId: route.connectionId, ...settings, route, ...(switched ? { sessionId: null, replay: history.length > 0 } : {}) });
     this.send('thread-changed', { threadId });
     this.send('changed');

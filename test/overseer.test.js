@@ -117,3 +117,10 @@ test('overseer: a turn routes through the router model, runs on the chosen model
     cli.cliPath('claude', true); cli.cliPath('codex', true);
   }
 });
+
+test('overseer: in one strength group the lower price wins; an unknown price comes last', () => {
+  const c = (id, price) => ({ id, connectionId: 'claude-code', model: id, route: 'subscription', tier: 'top', price });
+  const pick = list => overseer.byRules({ kind: 'hard', list, use: () => 0 }).model;
+  assert.equal(pick([c('fable', 40), c('opus', 20)]), 'opus');
+  assert.equal(pick([c('mystery', null), c('fable', 40)]), 'fable');
+});

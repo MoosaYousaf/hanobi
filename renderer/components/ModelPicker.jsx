@@ -36,7 +36,9 @@ function ConnectionGroup({ connection, query, current, onPick }) {
   const preset = useStore(s => s.app.presets[connection.preset]);
   const [models, setModels] = useState(preset.models || null);
   const [loading, setLoading] = useState(false);
-  useEffect(() => { if (!preset.models && connection.ready) call('models:list', connection.id).then(setModels, toast); }, [connection.id, connection.ready, preset.models]);
+  // CLI menus can grow from the model catalog, so every group asks main for its current list.
+  const reloadable = preset.kind !== 'cli' || ['claude', 'codex'].includes(preset.cli);
+  useEffect(() => { if (connection.ready) call('models:list', connection.id).then(setModels, toast); }, [connection.id, connection.ready]);
   const load = guard(async () => { setLoading(true); try { setModels(await call('models:refresh', connection.id)); } finally { setLoading(false); } });
   const q = query.trim().toLowerCase();
   const visible = (models || []).filter(m => !q || m.id.toLowerCase().includes(q) || m.label.toLowerCase().includes(q) || connection.name.toLowerCase().includes(q));
@@ -46,7 +48,7 @@ function ConnectionGroup({ connection, query, current, onPick }) {
     <div className="pick-group">
       <div className="pick-group-head">
         <span>{connection.name}</span>
-        {preset.kind !== 'cli' && connection.ready ? <button className="icon-btn sm" title="Reload models" onClick={load}><RefreshCw size={12} className={loading ? 'spinning' : ''} /></button> : null}
+        {reloadable && connection.ready ? <button className="icon-btn sm" title="Reload models" onClick={load}><RefreshCw size={12} className={loading ? 'spinning' : ''} /></button> : null}
       </div>
       {!connection.ready ? <div className="pick-note">{connection.detail}</div> : null}
       {connection.ready && models && !models.length && !q ? <button className="pick-item muted" onClick={load}>Load available models</button> : null}
@@ -55,6 +57,7 @@ function ConnectionGroup({ connection, query, current, onPick }) {
         return (
           <button key={m.id || 'default'} className={`pick-item ${selected ? 'selected' : ''}`} disabled={!connection.ready} onClick={() => onPick(connection.id, m.id)}>
             <span className="pick-label">{m.label}</span>
+            {m.isNew ? <span className="pick-new">New</span> : null}
             {m.label !== m.id && m.id ? <span className="pick-id">{m.id}</span> : null}
             {selected ? <Check size={14} className="pick-check" /> : null}
           </button>

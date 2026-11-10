@@ -125,4 +125,32 @@ function run({ executable, env, cwd, input, resume, model, effort, draft, signal
   });
 }
 
-module.exports = { apply, run, POLICY };
+// The models of the user's Codex plan, from `codex app-server` (model/list). It makes no model call.
+function listModels({ executable, env, timeout = 20000 }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(executable, ['app-server'], { env, stdio: ['pipe', 'pipe', 'ignore'] });
+    const timer = setTimeout(() => { child.kill('SIGTERM'); reject(new Error('Codex did not list its models in time.')); }, timeout);
+    const end = (error, value) => { clearTimeout(timer); child.kill('SIGTERM'); error ? reject(error) : resolve(value); };
+    const write = message => { if (child.stdin.writable) child.stdin.write(JSON.stringify(message) + '\n'); };
+    child.stdin.on('error', () => {});
+    child.on('error', error => end(error));
+    child.on('close', code => end(new Error(`Codex app-server exited with code ${code}.`)));
+    let pending = '';
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', chunk => {
+      const lines = (pending + chunk).split('\n');
+      pending = lines.pop();
+      for (const line of lines) {
+        let message; try { message = JSON.parse(line); } catch { continue; }
+        if (message.id === 1) { write({ method: 'initialized' }); write({ id: 2, method: 'model/list', params: {} }); }
+        else if (message.id === 2) {
+          if (message.error) return end(new Error(message.error.message || 'Codex could not list its models.'));
+          return end(null, (message.result?.data || []).filter(m => !m.hidden && m.id).map(m => ({ id: m.id, label: m.displayName?.replace(/-(?=[A-Za-z]+$)/, ' ') || m.id, ...(m.description ? { description: m.description } : {}), ...(m.isDefault ? { isDefault: true } : {}) })));
+        }
+      }
+    });
+    write({ id: 1, method: 'initialize', params: { clientInfo: { name: 'orin', title: 'Orin', version: '1' }, capabilities: { experimentalApi: false } } });
+  });
+}
+
+module.exports = { apply, run, listModels, POLICY };

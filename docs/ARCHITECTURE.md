@@ -30,6 +30,7 @@ electron/main.js
   ├─ limits.js         plan limits of the CLI subscriptions: Claude OAuth usage, Codex rate_limits in session logs, Copilot quotas via gh
   ├─ files.js          conversation files: attachments (Files/<thread>/in), model files (out), HTML to docx/rtf/odt/pdf, path checks
   ├─ extract.js        document text (PDF, Word, RTF, ODT, PowerPoint, Excel) with macOS tools, cached in knowledge/.text/
+  ├─ models-catalog.js model catalog from models.dev (release dates, prices), once a day; Claude Code's model menu and model strength
   ├─ suggest.js        suggested-replies prompt and parsing
   ├─ commands.js       / commands (custom command files and skills, expanded for non-Claude models), @ file search and mentions
   └─ skills.js         read-only skill discovery
@@ -64,6 +65,10 @@ Before each run in a code workspace, `git.snapshot` copies the real index (with 
 ## Overseer
 
 A thread with `overseer: true` gets its model chosen before each turn (`Runner.route`, `electron/overseer.js`). Candidates are the ready connections' models without CLI defaults; paid-key connections only with `allowPaid`; a CLI only after it gave a reply without an error in some thread, or when the user included its model (an installed CLI may not be signed in). Each model has a tier (`top`, `mid`, `fast`) from the `TIERS` table or from words in its id; local models are always `fast`. `classify` calls a message `quick`, `normal`, or `hard`. When the kind matches the previous route and that model is under the soft limit (80%), the thread stays (`by: 'same'`, no model call). Otherwise the router model (Haiku 5.5 through `cli.complete`, 10 s limit) returns `{id, effort, reason}` as JSON; an unknown id, bad JSON, an error, or the setting `router: 'rules'` falls back to `byRules`: plans under the soft limit, the nearest tier (stronger first), the previous connection, subscriptions before local before keys, then the plan with the most left. Plans at the hard limit (90%) are out. The route moves the thread like a model change (another connection replays the transcript), keeps the user's access mode in `baseMode` (`mapMode` gives the closest mode of each provider), and is saved on the thread (`route`) and on the reply (`route: { reason, by, effort }`). Choosing a model by hand turns the Overseer off.
+
+## Model catalog
+
+`electron/models-catalog.js` downloads `https://models.dev/api.json` (free, no key, about 6 MB) once a day and keeps a short form (id, name, release date, output price, context) for seven providers in `<userData>/models-catalog.json`. A failed download keeps the last copy. It does three jobs. (1) Claude Code has no model list, so its menu is the catalog's Anthropic models: the newest of each family plus everything from the last 90 days. (2) Codex lists its own models through `codex app-server` (`model/list`, no model call). Both lists are saved in `modelCache` and refresh every 6 hours (`Runner.refreshCatalog`) or with the reload button; the menu shows "CLI default" and then the list, and the built-in list stays valid for old conversations (`validateSettings`). (3) A model released in the last 14 days gets a "New" badge, and the Overseer takes each model's strength from its output price (top from $15 per million tokens, mid from $2) and prefers the cheaper model in a strength group.
 
 ## Adding a provider
 

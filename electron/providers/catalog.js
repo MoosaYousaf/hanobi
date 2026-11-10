@@ -44,13 +44,16 @@ const modes = {
 const modeGroup = kind => (kind === 'cli' ? 'cli' : 'api');
 const modesFor = preset => modes[modeGroup(preset.kind)].filter(m => !m.asks || preset.asks);
 
-function validateSettings(connection, settings) {
+// models: the CLI's current menu (from the model catalog or the CLI), else its built-in list.
+function validateSettings(connection, settings, models) {
   const preset = presets[connection.preset];
   if (!preset) throw new Error('Unknown connection.');
+  models ||= preset.models;
   const model = String(settings.model ?? '');
   const effort = String(settings.effort ?? '');
   const mode = String(settings.mode ?? modesFor(preset)[0].id);
-  const listed = preset.kind === 'cli' && preset.models.some(m => m.id === model);
+  // A model from the built-in list stays valid after a newer menu drops it, so old conversations keep working.
+  const listed = preset.kind === 'cli' && [...preset.models, ...(models || [])].some(m => m.id === model);
   if (!listed && (preset.kind === 'cli' && !preset.customModels || !/^[\w.:/@+-]{1,200}$/.test(model))) throw new Error('Choose a model.');
   if (!preset.efforts.includes(effort)) throw new Error('This model does not support that effort level.');
   if (!modesFor(preset).some(m => m.id === mode)) throw new Error('Unknown access mode.');

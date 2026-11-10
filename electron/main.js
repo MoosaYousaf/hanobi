@@ -20,6 +20,7 @@ const commands = require('./commands');
 const desktop = require('./desktop');
 const { Limits } = require('./limits');
 const { migrateFromHanobi } = require('./rename');
+const { ModelCatalog } = require('./models-catalog');
 // From package.json, not from Electron: a script started with `electron <file>` reports Electron's version.
 const VERSION = require('../package.json').version;
 
@@ -408,7 +409,7 @@ app.whenReady().then(() => {
   // Smoke runs give fixed readings instead of the user's real accounts.
   const fixture = process.env.ORIN_LIMITS_FIXTURE ? JSON.parse(process.env.ORIN_LIMITS_FIXTURE) : null;
   limits = new Limits({ cliPath, ...(fixture ? { sources: Object.fromEntries(Object.entries(fixture).map(([cli, reading]) => [cli, async () => reading])) } : {}), onChange: (cli, reading) => send('limits', { cli, ...reading }) });
-  runner = new Runner({ store, secrets, mcp, send, files, limits });
+  runner = new Runner({ store, secrets, mcp, send, files, limits, catalog: new ModelCatalog({ file: path.join(app.getPath('userData'), 'models-catalog.json') }) });
   nativeTheme.themeSource = ['light', 'dark'].includes(store.data.preferences.theme) ? store.data.preferences.theme : 'system';
   // A general folder for chats that do not belong to a project.
   const general = path.join(app.getPath('userData'), 'Chats');
@@ -432,6 +433,8 @@ app.whenReady().then(() => {
   createWindow();
   // A free check against GitHub Releases, once at launch and then once a day. Smoke runs skip it.
   if (!process.env.ORIN_USER_DATA) { setTimeout(checkUpdate, 5000); setInterval(checkUpdate, 24 * 60 * 60 * 1000).unref(); }
+  // New models show up in the menus without an app update: the catalog and the CLI model lists refresh once a day.
+  if (!process.env.ORIN_USER_DATA) { const models = () => runner.refreshCatalog().then(changed); setTimeout(models, 8000); setInterval(models, 6 * 60 * 60 * 1000).unref(); }
   app.on('activate', () => { if (windows.size === 0) createWindow(); });
 });
 

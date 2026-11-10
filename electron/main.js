@@ -23,6 +23,7 @@ const { migrateFromHanobi } = require('./rename');
 const { ModelCatalog } = require('./models-catalog');
 const hf = require('./hf');
 const { Engine, toolPath } = require('./llama');
+const { Terminal } = require('./terminal');
 // From package.json, not from Electron: a script started with `electron <file>` reports Electron's version.
 const VERSION = require('../package.json').version;
 
@@ -36,7 +37,7 @@ if (!process.env.ORIN_USER_DATA) try { migrateFromHanobi(app.getPath('appData'),
 // One Orin at a time: a second launch shows the open window.
 if (!app.requestSingleInstanceLock()) app.quit();
 const windows = new Set();
-let store, secrets, mcp, runner, files, speech, limits, attention, library, downloads, engine, update = null, shortcutError = '';
+let store, secrets, mcp, runner, files, speech, limits, attention, library, downloads, engine, terminal, update = null, shortcutError = '';
 
 function send(channel, value) {
   for (const win of windows) if (!win.isDestroyed()) win.webContents.send(channel, value);
@@ -183,6 +184,23 @@ async function printPdf(html) {
   } finally { win.destroy(); fs.rmSync(source, { force: true }); }
 }
 
+// In full screen, Finder opens in another Space and the screen leaves Orin. A file sheet on Orin's window shows the
+// folder instead; Open opens the chosen files. Outside full screen, Finder opens on top of Orin.
+async function reveal(target, { file = false } = {}) {
+  const win = BrowserWindow.getFocusedWindow();
+  if (!win?.isFullScreen()) {
+    if (file) return shell.showItemInFolder(target);
+    const error = await shell.openPath(target);
+    if (error) throw new Error(error);
+    return;
+  }
+  const picked = await dialog.showOpenDialog(win, { defaultPath: target, buttonLabel: 'Open', properties: ['openFile', 'multiSelections', 'createDirectory'] });
+  for (const chosen of picked.canceled ? [] : picked.filePaths) {
+    const error = await shell.openPath(chosen);
+    if (error) throw new Error(error);
+  }
+}
+
 const handlers = {
   state: () => state(),
   thread: id => threadView(id),
@@ -224,7 +242,7 @@ const handlers = {
     return added;
   },
   'project:remove-file': (id, name) => projects.removeFile(projectById(id), name),
-  'workspace:open': id => shell.openPath(store.workspace(id).path),
+  'workspace:open': id => reveal(store.workspace(id).path),
   'thread:new': (workspaceId, settings) => {
     const base = settings || store.data.preferences.lastModel || { connectionId: runner.connections().find(c => c.ready)?.id || 'claude-code', model: '', effort: '', mode: 'auto' };
     const thread = store.addThread(workspaceId, { connectionId: base.connectionId, model: '', effort: '', mode: 'auto' });
@@ -366,7 +384,7 @@ const handlers = {
     activeWindow()?.previewFile(full, path.basename(full));
   },
   'files:open': async (threadId, file) => { const error = await shell.openPath(await threadFile(threadId, file)); if (error) throw new Error(error); },
-  'files:reveal': async (threadId, file) => shell.showItemInFolder(await threadFile(threadId, file)),
+  'files:reveal': async (threadId, file) => reveal(await threadFile(threadId, file), { file: true }),
   'files:save-copy': async (threadId, file) => {
     const full = await threadFile(threadId, file);
     const target = await dialog.showSaveDialog(activeWindow(), { defaultPath: path.join(app.getPath('downloads'), path.basename(full)) });
@@ -443,6 +461,23 @@ app.whenReady().then(() => {
   const chats = store.addWorkspace(general, 'Chats', { kind: 'chats' });
   if (chats.kind !== 'chats') { chats.kind = 'chats'; store.save(); }
   for (const [name, fn] of Object.entries(handlers)) ipcMain.handle(name, (_event, ...args) => fn(...args));
+  // The terminal talks only to the window that opened it. A window has one tmux client: a new one (after a reload)
+  // ends the old one, and a closed window ends its client.
+  terminal = new Terminal();
+  const clients = new Map(); // webContents id -> client id
+  ipcMain.handle('terminal:status', () => terminal.status());
+  ipcMain.handle('terminal:open', (event, options) => {
+    const sender = event.sender;
+    if (clients.has(sender.id)) terminal.close(clients.get(sender.id));
+    else sender.once('destroyed', () => { terminal.close(clients.get(sender.id)); clients.delete(sender.id); });
+    const workspace = store.data.workspaces.find(w => w.id === options?.workspaceId && w.kind === 'code');
+    const id = terminal.open({ cwd: workspace?.path, cols: options?.cols, rows: options?.rows }, value => { if (!sender.isDestroyed()) sender.send('terminal', value); });
+    clients.set(sender.id, id);
+    return id;
+  });
+  ipcMain.handle('terminal:write', (_event, id, data) => terminal.write(id, data));
+  ipcMain.handle('terminal:resize', (_event, id, cols, rows) => terminal.resize(id, cols, rows));
+  ipcMain.handle('terminal:close', (_event, id) => terminal.close(id));
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: 'Orin', submenu: [{ role: 'about' }, { type: 'separator' }, { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => send('menu', 'settings') }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { type: 'separator' }, { role: 'quit' }] },
     { label: 'File', submenu: [{ label: 'New Conversation', accelerator: 'CmdOrCtrl+N', click: () => send('menu', 'new-thread') }, { label: 'New Window', accelerator: 'CmdOrCtrl+Shift+N', click: createWindow }, { type: 'separator' }, { role: 'close' }] },
@@ -466,4 +501,4 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('will-quit', () => globalShortcut.unregisterAll());
-app.on('before-quit', () => { speech?.cancel(); engine?.close(); runner?.stopAll(); mcp?.closeAll(); store?.flush(); });
+app.on('before-quit', () => { terminal?.closeAll(); speech?.cancel(); engine?.close(); runner?.stopAll(); mcp?.closeAll(); store?.flush(); });

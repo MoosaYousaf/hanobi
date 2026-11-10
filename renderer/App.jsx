@@ -8,6 +8,8 @@ import { Dialog } from './components/Dialog.jsx';
 
 // Settings is opened rarely, so it loads on first use.
 const Settings = lazy(() => import('./components/Settings.jsx'));
+// The terminal (xterm.js) loads when the Terminal page first opens.
+const TerminalView = lazy(() => import('./components/TerminalView.jsx'));
 
 const MIN_PANE = 340; // px
 
@@ -52,6 +54,7 @@ export function App() {
   const ready = useStore(s => !!s.app);
   const threadId = useStore(s => s.ui.threadId);
   const projectId = useStore(s => s.ui.projectId);
+  const terminal = useStore(s => s.ui.terminal);
   const sidebar = useStore(s => s.ui.sidebar);
   const panel = useStore(s => s.ui.panel);
   const settings = useStore(s => s.ui.settings);
@@ -71,7 +74,7 @@ export function App() {
   return (
     <div className={`app ${sidebar && !focus ? '' : 'no-sidebar'} ${panel && !focus ? 'with-panel' : ''} ${focus && threadId ? 'focus' : ''}`}>
       {sidebar && !focus ? <Sidebar /> : null}
-      <main className="main">{threadId ? <Panes /> : projectId ? <ProjectView key={projectId} projectId={projectId} /> : <Home />}</main>
+      <main className="main">{terminal ? <Suspense fallback={null}><TerminalView /></Suspense> : threadId ? <Panes /> : projectId ? <ProjectView key={projectId} projectId={projectId} /> : <Home />}</main>
       {panel && !focus ? <SidePanel /> : null}
       {settings ? <Suspense fallback={null}><Settings /></Suspense> : null}
       <Dialog />

@@ -50,6 +50,13 @@ const inHours = h => Date.now() + h * 3600 * 1000;
 process.env.ORIN_LIMITS_FIXTURE = JSON.stringify({ claude: { plan: 'Claude Pro', windows: [{ id: 'five_hour', label: 'Session (5 hours)', used: 54, resetsAt: inHours(2) }, { id: 'seven_day', label: 'Week', used: 86, resetsAt: inHours(50) }], note: '' } });
 // A fake speech helper streams words without a microphone.
 process.env.ORIN_SPEECH_HELPER = path.join(__dirname, '../test/fixtures/fake-speech.cjs');
+// The Terminal page runs tmux on its own server, so the user's tmux sessions stay untouched.
+process.env.ORIN_TMUX_SOCKET = `orin-smoke-${process.pid}`;
+const stopTmux = () => {
+  const tmux = require('../electron/terminal.js').tmuxPath();
+  if (tmux) try { require('node:child_process').execFileSync(tmux, ['-L', process.env.ORIN_TMUX_SOCKET, 'kill-server'], { stdio: 'ignore' }); } catch {}
+  fs.rmSync(path.join(process.env.TMUX_TMPDIR || '/tmp', `tmux-${process.getuid()}`, process.env.ORIN_TMUX_SOCKET), { force: true });
+};
 const { app, BrowserWindow, nativeTheme, dialog, systemPreferences, clipboard } = require('electron');
 // The microphone first answers "denied", so voice input shows its permission message without a macOS prompt.
 let microphone = 'denied';
@@ -92,9 +99,11 @@ app.whenReady().then(async () => {
     if (win.webContents.isLoading()) await new Promise(r => win.webContents.once('did-finish-load', r));
     win.webContents.on('console-message', (_e, level, message) => { if (level >= 3) errors.push(message); });
     await until(win, `!!document.querySelector('.sidebar .ws-name')`, 'sidebar renders');
+    await until(win, `document.querySelector('.home p')?.textContent === 'One window for every model you use' && document.querySelectorAll('.home > *').length <= 2 && !document.querySelector('.home h1, .home .empty-mark')`, 'home shows only the one line');
     await shot(win, '1-home');
     await clickText(win, '.thread-row', 'Parse the release notes');
     await until(win, `document.querySelectorAll('.msg').length === 2 && !!document.querySelector('.prose table')`, 'messages render');
+    await until(win, `!!document.querySelector('.top-actions [title="Terminal (tmux)"]') && !['Rename', 'Delete conversation', 'Show folder in Finder'].some(t => document.querySelector(\`.top-actions [title="\${t}"]\`))`, 'the thread header has no rename, delete, or Finder buttons');
     await until(win, `document.querySelector('.composer-row .usage-ring')?.getAttribute('aria-label') === 'Session (5 hours): 54% used, 46% left'`, 'usage ring shows the plan session');
     await until(win, `(() => { const card = document.querySelector('.usage-card')?.textContent || ''; return card.includes('Claude Pro') && card.includes('Week86% used') && card.includes('14% left') && card.includes('Context: 45.2k of 1M tokens (5%)'); })()`, 'usage card shows windows, what is left, and the context');
     await until(win, `document.querySelector('.composer-row .usage-ring').classList.contains('high') && document.querySelector('.limit-warn')?.textContent === 'Week: 14% left'`, 'a window near its cap warns');
@@ -298,6 +307,7 @@ app.whenReady().then(async () => {
     await shot(win, '6-rewind');
     await clickText(win, '.rewind-menu button', 'Rewind conversation');
     await until(win, `!document.querySelector('.msg') && document.querySelector('.composer textarea, textarea').value.includes('breaking change')`, 'rewind empties the thread and refills the composer');
+    const codeThread = await win.webContents.executeJavaScript(`document.querySelector('.crumb-title')?.textContent`);
     await clickText(win, '.view-switch button', 'Chat');
     await until(win, `[...document.querySelectorAll('.ws-name')].some(e => e.textContent === 'Chats') && document.querySelector('.new-chat').textContent.includes('New chat')`, 'chat view lists Chats');
     await clickText(win, '.side-action', 'New Project');
@@ -315,6 +325,11 @@ app.whenReady().then(async () => {
     if (!project || project.instructions !== 'Write for customers.' || !fs.readFileSync(path.join(project.path, 'CLAUDE.md'), 'utf8').includes('Write for customers.')) throw new Error('Project instructions were not saved: ' + JSON.stringify(project || saved.workspaces));
     await clickText(win, '.view-switch button', 'Code');
     await until(win, `[...document.querySelectorAll('.ws-name')].some(e => e.textContent === 'orin') && ![...document.querySelectorAll('.ws-name')].some(e => e.textContent === 'Chats')`, 'code view lists folders only');
+    await until(win, `document.querySelector('.crumb-title')?.textContent === ${JSON.stringify(codeThread)}`, 'the Code tab opens its last conversation again');
+    await clickText(win, '.view-switch button', 'Chat');
+    await until(win, `document.querySelector('.crumb-ws')?.textContent === 'Launch plan' && !document.querySelector('.home')`, 'the Chat tab opens its last conversation again');
+    await clickText(win, '.view-switch button', 'Code');
+    await until(win, `document.querySelector('.crumb-title')?.textContent === ${JSON.stringify(codeThread)}`, 'the Code tab opens its last conversation after a second switch');
     await clickText(win, '.thread-row', 'Parse the release notes');
     await until(win, `document.querySelectorAll('.pane').length === 1`, 'thread opens in one pane');
     await click(win, '[title="New split pane (⌘D)"]');
@@ -356,9 +371,21 @@ app.whenReady().then(async () => {
       return new Promise(r => setTimeout(() => { target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data, clientY: y })); source.dispatchEvent(new DragEvent('dragend', { bubbles: true })); r(); }, 50));
     })()`);
     await until(win, `(${JSON.stringify(listed)}).at(-1) === [...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row .thread-title')][0].textContent`, 'dragging a conversation reorders the list');
+    // Terminal: the sidebar button opens tmux in xterm.js; pasted text reaches the shell and shows on screen.
+    await clickText(win, '.sidebar-foot .foot-btn', 'Terminal');
+    await until(win, `document.querySelector('.foot-btn.on')?.textContent.includes('Terminal') && document.querySelector('.crumb-title')?.textContent === 'tmux' && /\\[orin\\]/.test(document.querySelector('.xterm-rows')?.textContent || '')`, 'the Terminal page runs tmux', 15000);
+    await win.webContents.executeJavaScript(`(() => { const data = new DataTransfer(); data.setData('text/plain', 'echo orin-smoke-input'); document.querySelector('.xterm-helper-textarea').dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data })); })()`);
+    await until(win, `(document.querySelector('.xterm-rows')?.textContent || '').includes('echo orin-smoke-input')`, 'typed text reaches tmux', 10000);
+    await shot(win, '11-terminal');
+    await clickText(win, '.thread-row', 'Quarterly table');
+    await until(win, `!document.querySelector('.xterm') && !document.querySelector('.foot-btn.on') && document.querySelector('.crumb-title')?.textContent === 'Quarterly table'`, 'a conversation replaces the Terminal page');
+    await click(win, '.top-actions [title="Terminal (tmux)"]');
+    await until(win, `/\\[orin\\]/.test(document.querySelector('.xterm-rows')?.textContent || '')`, 'the header button opens the Terminal page and attaches again', 15000);
+    await until(win, `(document.querySelector('.xterm-rows')?.textContent || '').includes('echo orin-smoke-input')`, 'the tmux session kept its screen');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, ghost-text suggestion, inline completion, suggestion chips, / commands, @ file mentions, saved messages, live reply with approval, elapsed time and background work, themed access and effort pickers, new conversation, model picker, settings, connector connect and disconnect, Overseer, local models (search, files, download, delete), connector presets, dark and light themes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, Mermaid diagrams, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
+    process.stdout.write('Smoke passed: home, ghost-text suggestion, inline completion, suggestion chips, / commands, @ file mentions, saved messages, live reply with approval, elapsed time and background work, themed access and effort pickers, new conversation, model picker, settings, connector connect and disconnect, Overseer, local models (search, files, download, delete), connector presets, dark and light themes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, Mermaid diagrams, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits, tab memory, Terminal (tmux).\n');
+    stopTmux();
     app.exit(0);
   } catch (error) {
-    if (errors.length) console.error('Console errors:\n' + errors.join('\n')); process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }
+    if (errors.length) console.error('Console errors:\n' + errors.join('\n')); process.stderr.write(String(error.stack || error) + '\n'); stopTmux(); app.exit(1); }
 });

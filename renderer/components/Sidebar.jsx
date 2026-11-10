@@ -1,7 +1,7 @@
 import { memo, useMemo, useState } from 'react';
 import { Menu, MenuItem, MenuSeparator } from './Menu.jsx';
-import { Plus, Settings as SettingsIcon, PanelLeftClose, FolderOpen, X, MessageSquare, Code2, MoreHorizontal, Pencil, Columns2, Pin, PinOff, FolderInput, Trash2, ChevronLeft, Check } from 'lucide-react';
-import { useStore, setUi, openThread, openInSplit, newThread, deleteThread, call, guard, askText, askConfirm } from '../store.js';
+import { Plus, Settings as SettingsIcon, PanelLeftClose, FolderOpen, X, MessageSquare, Code2, MoreHorizontal, Pencil, Columns2, Pin, PinOff, FolderInput, Trash2, ChevronLeft, Check, SquareTerminal } from 'lucide-react';
+import { useStore, setUi, openThread, openInSplit, newThread, deleteThread, call, guard, askText, askConfirm, switchView, openProject, openTerminal } from '../store.js';
 
 const LIMIT = 8;
 const ago = at => {
@@ -95,7 +95,7 @@ function Workspace({ workspace, threads }) {
     <section className="ws">
       <div className="ws-head">
         {project
-          ? <button className="ws-name link" title="Open project" onClick={() => setUi({ projectId: workspace.id, threadId: null, workspaceId: workspace.id })}>{workspace.name}</button>
+          ? <button className="ws-name link" title="Open project" onClick={() => openProject(workspace.id)}>{workspace.name}</button>
           : <span className="ws-name" title={workspace.path}>{workspace.name}</span>}
         <span className="ws-actions">
           {workspace.kind === 'code' ? <button className="icon-btn sm" title="Show in Finder" onClick={guard(() => call('workspace:open', workspace.id))}><FolderOpen size={13} /></button> : null}
@@ -134,13 +134,9 @@ export function Sidebar() {
   const sorted = threads.toSorted((a, b) => sortKey(b) - sortKey(a));
   const shown = workspaces.filter(w => inView(w, view)).toSorted((a, b) => (a.kind === 'chats') - (b.kind === 'chats'));
   const chats = workspaces.find(w => w.kind === 'chats');
+  const terminal = useStore(s => s.ui.terminal);
   const pinned = sorted.filter(t => t.pinned && shown.some(w => w.id === t.workspaceId));
-  const switchView = next => {
-    if (next === view) return;
-    const first = workspaces.find(w => inView(w, next));
-    setUi({ view: next, threadId: null, projectId: null, workspaceId: next === 'chat' ? chats?.id : first?.id || null });
-  };
-  const newProject = guard(async () => { const name = await askText('Project name'); if (name === null) return; const p = await call('project:create', name); setUi({ projectId: p.id, threadId: null, workspaceId: p.id }); });
+  const newProject = guard(async () => { const name = await askText('Project name'); if (name === null) return; const p = await call('project:create', name); openProject(p.id); });
   const newWorkspace = guard(async () => { const w = await call('workspace:choose'); if (w) setUi({ workspaceId: w.id }); });
   return (
     <aside className="sidebar">
@@ -164,6 +160,9 @@ export function Sidebar() {
         {view === 'code' && !shown.length ? <div className="ws-empty">Add a folder with New Workspace.</div> : null}
       </nav>
       <div className="sidebar-foot">
+        <button className={`foot-btn ${terminal ? 'on' : ''}`} aria-current={terminal ? 'page' : undefined} onClick={openTerminal}>
+          <SquareTerminal size={15} /> Terminal
+        </button>
         <button className="foot-btn" onClick={() => setUi({ settings: 'models' })}>
           <SettingsIcon size={15} /> Settings
         </button>

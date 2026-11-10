@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { PanelLeftOpen, GitCompare, Sparkles, Trash2, Pencil, FolderOpen, Maximize2, Minimize2, X, Columns2 } from 'lucide-react';
-import { useStore, setUi, loadThread, openThread, newThread, call, guard, toast, askText, askConfirm, deleteThread, closePane, toggleFocus, MAX_PANES } from '../store.js';
+import { PanelLeftOpen, GitCompare, Sparkles, Maximize2, Minimize2, X, Columns2, SquareTerminal } from 'lucide-react';
+import { useStore, setUi, loadThread, openThread, newThread, call, guard, toast, askText, askConfirm, closePane, toggleFocus, openTerminal, MAX_PANES } from '../store.js';
 import { modelLabel } from '../labels.js';
 import { Message, LiveMessage } from './Message.jsx';
 import { ThreadContext } from './Files.jsx';
@@ -12,9 +12,7 @@ const PAGE = 80;
 function Header({ thread, workspace, panes, index }) {
   const sidebar = useStore(s => s.ui.sidebar);
   const panel = useStore(s => s.ui.panel);
-  const running = useStore(s => !!s.live[thread.id]);
   const rename = guard(async () => { const title = await askText('Conversation name', thread.title); if (title !== null) await call('thread:rename', thread.id, title); });
-  const remove = guard(() => deleteThread(thread));
   const toggle = name => setUi({ panel: panel === name ? null : name });
   return (
     <header className="topbar drag">
@@ -25,13 +23,10 @@ function Header({ thread, workspace, panes, index }) {
         <button className="crumb-title" onClick={rename} title="Rename">{thread.title}</button>
       </div>
       <div className="top-actions no-drag">
-        <button className="icon-btn" title="Rename" onClick={rename}><Pencil size={15} /></button>
-        <button className="icon-btn" title="Delete conversation" disabled={running} onClick={remove}><Trash2 size={15} /></button>
-        <button className="icon-btn" title="Show folder in Finder" onClick={guard(() => call('workspace:open', workspace.id))}><FolderOpen size={15} /></button>
-        <span className="divider" />
         <button className={`icon-btn ${panel === 'skills' ? 'on' : ''}`} title="Skills" onClick={() => toggle('skills')}><Sparkles size={15} /></button>
         <button className={`icon-btn ${panel === 'git' ? 'on' : ''}`} title="Changes" onClick={() => toggle('git')}><GitCompare size={15} /></button>
         <span className="divider" />
+        <button className="icon-btn" title="Terminal (tmux)" onClick={openTerminal}><SquareTerminal size={15} /></button>
         {panes < MAX_PANES ? <button className="icon-btn" title="New split pane (⌘D)" onClick={guard(() => newThread(workspace.id, { split: true }))}><Columns2 size={15} /></button> : null}
         <button className="icon-btn" title="Focus mode (⇧⌘F)" onClick={() => toggleFocus(true)}><Maximize2 size={15} /></button>
         {panes > 1 ? <button className="icon-btn" title="Close pane" onClick={() => closePane(thread.id)}><X size={15} /></button> : null}
@@ -108,12 +103,8 @@ export function Home() {
     <div className="thread">
       <header className="topbar drag">{!sidebar ? <button className="icon-btn no-drag" onClick={() => setUi({ sidebar: true })}><PanelLeftOpen size={16} /></button> : null}</header>
       <div className="home">
-        <Mark size={44} className="empty-mark" />
-        <h1>Orin</h1>
-        <p>One window for every model you use: your Claude and ChatGPT subscriptions through their CLIs, API keys, and local models, with MCP connectors.</p>
-        {ready
-          ? <button className="btn primary lg" onClick={guard(() => newThread())}>New conversation</button>
-          : <button className="btn primary lg" onClick={() => setUi({ settings: 'models' })}>Connect a model</button>}
+        <p>One window for every model you use</p>
+        {ready ? null : <button className="btn primary lg" onClick={() => setUi({ settings: 'models' })}>Connect a model</button>}
       </div>
     </div>
   );

@@ -128,6 +128,14 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 .sidebar-foot { border-top: 1px solid var(--border); padding: 8px; display: grid; gap: 2px; }
 .foot-btn { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 7px; color: var(--text-2); }
 .foot-btn:hover { background: var(--hover); color: var(--text); }
+.foot-btn.on { background: var(--selected); color: var(--text); font-weight: 500; box-shadow: inset 2px 0 0 var(--accent); }
+
+/* Terminal page */
+.terminal-wrap { flex: 1; min-height: 0; display: flex; padding: 10px 4px 6px 14px; }
+.terminal-box { flex: 1; min-width: 0; min-height: 0; }
+.terminal-box .xterm { height: 100%; }
+.terminal-box .xterm-viewport { background: var(--bg) !important; }
+.terminal-note { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 14px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--raised); box-shadow: var(--pop-shadow); color: var(--text-2); }
 
 /* Thread */
 .thread { display: flex; flex-direction: column; min-height: 0; height: 100%; }
@@ -147,10 +155,11 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 .thread-loading { flex: 1; }
 
 .empty, .home { text-align: center; padding: 14vh 20px 0; }
-.home { margin: auto; padding: 0 24px 8vh; max-width: 520px; }
+.home { margin: auto; padding: 0 24px; max-width: 520px; display: flex; flex-direction: column; align-items: center; gap: 22px; }
 .empty-mark { color: var(--accent); }
-.empty h1, .home h1 { font-size: 24px; font-weight: 650; letter-spacing: -.02em; margin: 16px 0 8px; text-wrap: balance; }
-.empty p, .home p { color: var(--text-2); font-size: 14px; line-height: 1.6; margin: 0 auto 22px; max-width: 460px; text-wrap: pretty; }
+.empty h1 { font-size: 24px; font-weight: 650; letter-spacing: -.02em; margin: 16px 0 8px; text-wrap: balance; }
+.empty p { color: var(--text-2); font-size: 14px; line-height: 1.6; margin: 0 auto 22px; max-width: 460px; text-wrap: pretty; }
+.home p { color: var(--text); font-size: 22px; font-weight: 600; letter-spacing: -.02em; line-height: 1.3; margin: 0; text-wrap: balance; }
 
 /* Messages */
 .msg { margin-bottom: 26px; content-visibility: auto; contain-intrinsic-size: auto 120px; }

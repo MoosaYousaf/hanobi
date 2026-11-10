@@ -33,6 +33,7 @@ electron/main.js
   ├─ hf.js             local models: Hugging Face search and file list (fit estimate), resumable SHA-256-checked downloads, the Library of downloaded files
   ├─ llama.js          local engine: builds llama.cpp's llama-server from a pinned release, starts it for one model at a time (OpenAI API on 127.0.0.1)
   ├─ models-catalog.js model catalog from models.dev (release dates, prices), once a day; Claude Code's model menu and model strength
+  ├─ terminal.js       the Terminal page: a tmux client (`tmux new-session -A -s orin`) in a node-pty pseudo terminal
   ├─ suggest.js        suggested-replies prompt and parsing
   ├─ commands.js       / commands (custom command files and skills, expanded for non-Claude models), @ file search and mentions
   └─ skills.js         read-only skill discovery
@@ -95,6 +96,14 @@ For CLI subscriptions the ring shows plan usage from `electron/limits.js`. Every
 ## Files
 
 `electron/files.js` keeps each conversation's files under `<userData>/Files/<thread id>/`. Attachments are copied to `in/<uuid>/`, so a moved original does not break the chat. Files that API models make with `orin__write_file` go to `out/`. A file part is `{ type: 'file', name, path, size, mediaType }`; user messages hold attachments and replies hold made files. The renderer shows cards for file parts and for paths that CLI tools wrote (`Write`, `Edit`, Codex file changes, Copilot `create`/`edit`). Every file action goes through `Files.resolve`, which accepts only real paths inside the thread's folder or its workspace (symbolic links are resolved first). Attachment text comes from `extract.js` and goes into prompts as `<attachment>` blocks: through the transcript for API models, and in the stdin prompt with paths for CLI agents. Mermaid code blocks open as diagrams: `mermaid` loads on the first diagram, renders in strict mode (no scripts or click handlers), and takes its colors from the theme. Word, RTF, and OpenDocument output come from HTML through `textutil`; PDF output comes from Chromium's printer in a hidden window with scripts off.
+
+## Terminal
+
+The Terminal page (sidebar foot, and the header button next to split panes) runs a tmux client for the session `orin` in a pseudo terminal from `node-pty`; the renderer draws it with xterm.js (`TerminalView.jsx`, loaded on first use). The tmux session outlives the page and Orin: leaving the page ends only the client, and the page attaches again. Other terminals reach it with `tmux attach -t orin`. A new session starts in the selected Code workspace folder, or the home folder. Each window has one client: a new one ends the old one, and a closed window ends its client. Output goes only to the window that opened it (`terminal` event). node-pty ships N-API prebuilds that load in Electron without a rebuild, so `npmRebuild` is off and `node_modules/node-pty` is unpacked from the asar. npm drops the execute bit of its `spawn-helper`; `postinstall` and `terminal.js` set it again. Smoke runs use their own tmux server (`ORIN_TMUX_SOCKET`).
+
+## Tabs and Finder
+
+Each sidebar tab (Chat, Code) keeps the page it showed last (`ui.tabs` in `renderer/store.js`): conversation and panes, project page, or Terminal page. Switching tabs opens that page again; a tab with no page yet opens its newest conversation. "Show in Finder" opens Finder when the window is not in full screen. In full screen, Finder would open in another Space, so Orin shows a file sheet on its own window at that folder instead, and Open opens the chosen files.
 
 ## Voice input
 

@@ -12,7 +12,8 @@ let state = {
   started: {}, // threadId -> when the running turn started (ms)
   approvals: [], // approval requests and model questions; questions carry `questions`
   // panes: the threads shown side by side; threadId is the active pane. sizes: pane width fractions.
-  ui: { view: null, workspaceId: null, threadId: null, projectId: null, panes: [], sizes: [], focus: false, panel: null, settings: null, sidebar: true },
+  // terminal: the Terminal page is open. tabs: the page each sidebar tab (chat, code) showed last.
+  ui: { view: null, workspaceId: null, threadId: null, projectId: null, terminal: false, panes: [], sizes: [], focus: false, panel: null, settings: null, sidebar: true, tabs: {} },
   toast: null,
   limits: {}, // cli -> plan limits reading (see renderer/limits.js)
   voice: { state: 'idle' }, // idle | starting | listening | transcribing; threadId, level (0..1)
@@ -75,10 +76,44 @@ export function focusPane(id) { if (id !== state.ui.threadId) show(id); }
 function show(id, split = false) {
   const thread = state.app.threads.find(t => t.id === id);
   const workspace = state.app.workspaces.find(w => w.id === thread?.workspaceId);
-  const panes = panesFor(id, split);
-  setUi({ threadId: id, projectId: null, panes, sizes: panes.length === state.ui.panes.length ? state.ui.sizes : equal(panes.length),
-    workspaceId: workspace?.id ?? state.ui.workspaceId, ...(workspace ? { view: workspace.kind === 'code' ? 'code' : 'chat' } : {}) });
+  const view = workspace ? (workspace.kind === 'code' ? 'code' : 'chat') : state.ui.view;
+  const leaving = view !== state.ui.view;
+  // A thread of the other tab starts a new layout there; the tab it leaves keeps its page.
+  const panes = leaving ? [id] : panesFor(id, split);
+  setUi({ threadId: id, projectId: null, terminal: false, panes, sizes: panes.length === state.ui.panes.length && !leaving ? state.ui.sizes : equal(panes.length),
+    workspaceId: workspace?.id ?? state.ui.workspaceId, view, tabs: leaving ? remembered() : state.ui.tabs });
 }
+
+// The page of the current tab, kept so the tab opens on it again.
+const remembered = () => {
+  const { tabs, view, threadId, projectId, terminal, panes, sizes, workspaceId } = state.ui;
+  return { ...tabs, [view]: { threadId, projectId, terminal, panes, sizes, workspaceId } };
+};
+// Switching tabs opens the page the tab showed last. A tab that showed nothing yet opens its newest conversation.
+export function switchView(next) {
+  const { ui, app } = state;
+  if (next === ui.view) return;
+  const tabs = remembered();
+  const saved = tabs[next];
+  const exists = id => app.threads.some(t => t.id === id);
+  const inTab = w => fitsView(w, next);
+  const fallbackWorkspace = (next === 'chat' ? app.workspaces.find(w => w.kind === 'chats') : app.workspaces.find(inTab))?.id || null;
+  const workspaceId = inTab(app.workspaces.find(w => w.id === saved?.workspaceId)) ? saved.workspaceId : fallbackWorkspace;
+  const page = { threadId: null, projectId: null, terminal: false, panes: [], sizes: [] };
+  if (saved?.terminal) page.terminal = true;
+  else if (saved?.threadId && exists(saved.threadId)) {
+    const panes = saved.panes.filter(exists);
+    Object.assign(page, { threadId: saved.threadId, panes, sizes: panes.length === saved.panes.length ? saved.sizes : equal(panes.length) });
+  } else if (saved?.projectId && app.workspaces.some(w => w.id === saved.projectId && w.kind === 'project')) page.projectId = saved.projectId;
+  else if (!saved) {
+    const newest = app.threads.filter(t => inTab(app.workspaces.find(w => w.id === t.workspaceId))).toSorted((a, b) => b.updatedAt - a.updatedAt)[0];
+    if (newest) Object.assign(page, { threadId: newest.id, panes: [newest.id], sizes: [1], workspaceId: newest.workspaceId });
+  }
+  setUi({ view: next, workspaceId, ...page, tabs });
+  if (page.threadId) loadThread(page.threadId).catch(toast);
+}
+export const openProject = id => setUi({ projectId: id, threadId: null, terminal: false, workspaceId: id });
+export const openTerminal = () => setUi({ terminal: true, threadId: null, projectId: null });
 export async function openThread(id) {
   show(id);
   await loadThread(id);

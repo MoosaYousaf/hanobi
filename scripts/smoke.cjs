@@ -99,7 +99,7 @@ app.whenReady().then(async () => {
     if (win.webContents.isLoading()) await new Promise(r => win.webContents.once('did-finish-load', r));
     win.webContents.on('console-message', (_e, level, message) => { if (level >= 3) errors.push(message); });
     await until(win, `!!document.querySelector('.sidebar .ws-name')`, 'sidebar renders');
-    await until(win, `document.querySelector('.home p')?.textContent === 'One window for every model you use' && document.querySelectorAll('.home > *').length <= 2 && !document.querySelector('.home h1, .home .empty-mark')`, 'home shows only the one line');
+    await until(win, `document.querySelector('.home p')?.textContent === 'One window for every model you use' && document.querySelector('.home h1')?.textContent === 'Orin' && !!document.querySelector('.home .empty-mark') && !!document.querySelector('.home .btn.primary')`, 'home shows the mark, the name, the one line, and the button');
     await shot(win, '1-home');
     await clickText(win, '.thread-row', 'Parse the release notes');
     await until(win, `document.querySelectorAll('.msg').length === 2 && !!document.querySelector('.prose table')`, 'messages render');
@@ -318,7 +318,7 @@ app.whenReady().then(async () => {
     await win.webContents.executeJavaScript(`(() => { const t = document.querySelector('.project .system-prompt'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, 'Write for customers.'); t.dispatchEvent(new Event('input', { bubbles: true })); t.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); t.blur(); })()`);
     await shot(win, '7-project');
     await clickText(win, '.project-head .btn', 'New chat');
-    await until(win, `!document.querySelector('.composer-row [aria-label="Access mode"]') && !!document.querySelector('.crumb-ws') && document.querySelector('.crumb-ws').textContent === 'Launch plan'`, 'project chat opens in chat mode');
+    await until(win, `(document.querySelector('.composer-row [aria-label="Access mode"]')?.textContent || '').includes('Ask first') && document.querySelector('.crumb-ws')?.textContent === 'Launch plan'`, 'project chat opens with the access picker at Ask first');
     const saved = JSON.parse(fs.readFileSync(path.join(process.env.ORIN_USER_DATA, 'orin-data.json'), 'utf8'));
     await sleep(600);
     const project = JSON.parse(fs.readFileSync(path.join(process.env.ORIN_USER_DATA, 'orin-data.json'), 'utf8')).workspaces.find(w => w.kind === 'project');

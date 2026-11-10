@@ -35,14 +35,12 @@ function claudeMcpConfig(servers) {
 }
 
 // The prompt always goes through stdin, so prompt text can never be parsed as a CLI option.
-// chat: a Chat or project conversation. The agent may read the folder (project documents) but not change anything.
-function command(cli, { sessionId, model = '', effort = '', mode = 'auto', chat = false, mcpServers = [] }) {
+function command(cli, { sessionId, model = '', effort = '', mode = 'auto', mcpServers = [] }) {
   const modelArgs = model ? ['--model', model] : [];
-  if (chat && cli !== 'claude') mode = 'read';
   if (cli === 'claude') {
     // The prompt goes to stdin as a stream-json message, and permission prompts and questions come back as control requests.
     // In "ask" Orin shows the permission prompts; in the other modes it denies them, as the CLI does without a person.
-    const permission = chat ? ['--tools', 'Read,Glob,Grep'] : { ask: [], default: [], read: ['--permission-mode', 'plan'], auto: ['--permission-mode', 'acceptEdits'], full: ['--permission-mode', 'bypassPermissions'] }[mode];
+    const permission = { ask: [], default: [], read: ['--permission-mode', 'plan'], auto: ['--permission-mode', 'acceptEdits'], full: ['--permission-mode', 'bypassPermissions'] }[mode];
     return ['-p', '--input-format', 'stream-json', '--permission-prompt-tool', 'stdio', '--output-format', 'stream-json', '--include-partial-messages', '--verbose', '--prompt-suggestions', ...permission, ...modelArgs, ...(effort ? ['--effort', effort] : []), ...(sessionId ? ['--resume', sessionId] : []), ...claudeMcpConfig(mcpServers)];
   }
   if (cli === 'codex') {
@@ -142,7 +140,7 @@ const RESULT_GRACE_MS = 3000;
 // Claude Code makes its suggested next prompt after the result and waits up to 30 s for it before it exits.
 const LATE_MS = 35000;
 
-function runTurn({ preset, thread, history, prompt, cwd, chat = false, mcpServers, draft, signal, onSession, approve, question, onSuggestion }) {
+function runTurn({ preset, thread, history, prompt, cwd, mcpServers, draft, signal, onSession, approve, question, onSuggestion }) {
   const executable = cliPath(preset.cli);
   if (!executable) throw new Error(`${preset.name} is not installed or not on PATH.`);
   let resume = thread.replay ? null : thread.sessionId;
@@ -151,10 +149,10 @@ function runTurn({ preset, thread, history, prompt, cwd, chat = false, mcpServer
   // Without this, Claude Code skips suggestions behind a server flag, near plan limits, and after many unused ones.
   // Each Orin turn is a new process, so Claude Code never sees that a suggestion was used.
   if (preset.cli === 'claude') env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION = '1';
-  if (preset.cli === 'codex' && thread.mode === 'ask' && !chat) return codexServer.run({ executable, env, cwd, input, resume, model: thread.model, effort: thread.effort, draft, signal, onSession, approve, question });
-  if (preset.cli === 'copilot' && thread.mode === 'ask' && !chat) return copilotAcp.run({ executable, env, cwd, input, resume, model: thread.model, effort: thread.effort, draft, signal, onSession, approve });
+  if (preset.cli === 'codex' && thread.mode === 'ask') return codexServer.run({ executable, env, cwd, input, resume, model: thread.model, effort: thread.effort, draft, signal, onSession, approve, question });
+  if (preset.cli === 'copilot' && thread.mode === 'ask') return copilotAcp.run({ executable, env, cwd, input, resume, model: thread.model, effort: thread.effort, draft, signal, onSession, approve });
   if (preset.cli === 'copilot' && !resume) { resume = crypto.randomUUID(); onSession(resume); }
-  const args = command(preset.cli, { ...thread, sessionId: resume, chat, mcpServers: preset.cli === 'claude' ? mcpServers : [] });
+  const args = command(preset.cli, { ...thread, sessionId: resume, mcpServers: preset.cli === 'claude' ? mcpServers : [] });
   const child = spawn(executable, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
   // Claude Code keeps stdin open for approval and question answers until the turn's result arrives.
   const asks = preset.cli === 'claude';
@@ -185,7 +183,7 @@ function runTurn({ preset, thread, history, prompt, cwd, chat = false, mcpServer
       });
       return;
     }
-    if (!approve || thread.mode !== 'ask' || chat) { draft.setStatus(callId, 'denied'); deny(NOT_ASKED); return; }
+    if (!approve || thread.mode !== 'ask') { draft.setStatus(callId, 'denied'); deny(NOT_ASKED); return; }
     draft.setStatus(callId, 'pending');
     const { decision, cancel } = approve({ callId, name: request.tool_name, tool: request.display_name || request.tool_name, input: request.input, description: request.description, blockedPath: request.blocked_path });
     asking.set(request_id, cancel);

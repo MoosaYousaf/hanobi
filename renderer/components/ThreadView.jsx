@@ -103,8 +103,12 @@ export function Home() {
     <div className="thread">
       <header className="topbar drag">{!sidebar ? <button className="icon-btn no-drag" onClick={() => setUi({ sidebar: true })}><PanelLeftOpen size={16} /></button> : null}</header>
       <div className="home">
+        <Mark size={44} className="empty-mark" />
+        <h1>Orin</h1>
         <p>One window for every model you use</p>
-        {ready ? null : <button className="btn primary lg" onClick={() => setUi({ settings: 'models' })}>Connect a model</button>}
+        {ready
+          ? <button className="btn primary lg" onClick={guard(() => newThread())}>New conversation</button>
+          : <button className="btn primary lg" onClick={() => setUi({ settings: 'models' })}>Connect a model</button>}
       </div>
     </div>
   );

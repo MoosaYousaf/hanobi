@@ -155,11 +155,10 @@ kbd { font-size: 10.5px; color: var(--text-3); margin-left: auto; letter-spacing
 .thread-loading { flex: 1; }
 
 .empty, .home { text-align: center; padding: 14vh 20px 0; }
-.home { margin: auto; padding: 0 24px; max-width: 520px; display: flex; flex-direction: column; align-items: center; gap: 22px; }
+.home { margin: auto; padding: 0 24px 8vh; max-width: 520px; }
 .empty-mark { color: var(--accent); }
-.empty h1 { font-size: 24px; font-weight: 650; letter-spacing: -.02em; margin: 16px 0 8px; text-wrap: balance; }
-.empty p { color: var(--text-2); font-size: 14px; line-height: 1.6; margin: 0 auto 22px; max-width: 460px; text-wrap: pretty; }
-.home p { color: var(--text); font-size: 22px; font-weight: 600; letter-spacing: -.02em; line-height: 1.3; margin: 0; text-wrap: balance; }
+.empty h1, .home h1 { font-size: 24px; font-weight: 650; letter-spacing: -.02em; margin: 16px 0 8px; text-wrap: balance; }
+.empty p, .home p { color: var(--text-2); font-size: 14px; line-height: 1.6; margin: 0 auto 22px; max-width: 460px; text-wrap: pretty; }
 
 /* Messages */
 .msg { margin-bottom: 26px; content-visibility: auto; contain-intrinsic-size: auto 120px; }

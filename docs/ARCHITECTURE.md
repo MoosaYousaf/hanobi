@@ -51,7 +51,7 @@ Adapters write into a `Draft`. The runner sends the draft parts to the renderer 
 
 ## Workspaces
 
-A workspace has a `kind`. `code` is a folder the user added. `chats` is the general Chats folder in the app data. `project` is an app-owned folder under `Projects/`, with `instructions`, a `knowledge/` folder, and generated `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md`. Chats and projects are not code: CLI agents run with read-only tools, the access mode does not apply, and runs make no checkpoints. API runs in a project add `projects.apiContext()` to the system prompt. It gets document text from `extract.js`: PDFKit through JXA (`osascript`), `textutil`, and `unzip` for PowerPoint and Excel XML. The text is cached in `knowledge/.text/` and made again when the document changes.
+A workspace has a `kind`. `code` is a folder the user added. `chats` is the general Chats folder in the app data. `project` is an app-owned folder under `Projects/`, with `instructions`, a `knowledge/` folder, and generated `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md`. Chats and projects are not code folders, so runs make no checkpoints. They use the access mode like code: a new chat starts at Ask first (the closest mode of its provider) and does not change the default of new code conversations. Chats saved before this change moved to Ask first once (`preferences.chatAccess`), because they used to run read-only. API runs in a project add `projects.apiContext()` to the system prompt. It gets document text from `extract.js`: PDFKit through JXA (`osascript`), `textutil`, and `unzip` for PowerPoint and Excel XML. The text is cached in `knowledge/.text/` and made again when the document changes.
 
 ## Checkpoints and rewind
 

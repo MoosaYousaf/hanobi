@@ -146,8 +146,6 @@ export function Composer({ thread, workspace, modelLabel }) {
   const isCli = preset?.kind === 'cli';
   const modes = app.modes[isCli ? 'cli' : 'api'].filter(m => !m.asks || preset?.asks);
   const mode = modes.find(m => m.id === thread.mode) || modes[0];
-  // CLI agents in Chat and projects only read, so their access mode does not apply.
-  const chatCli = isCli && workspace.kind && workspace.kind !== 'code';
 
   const update = value => { setText(value); drafts.set(thread.id, value); };
   // The / or @ menu follows the caret. A closed menu stays closed until the trigger word changes.
@@ -294,9 +292,7 @@ export function Composer({ thread, workspace, modelLabel }) {
       <div className="composer-row">
         <button className="icon-btn tip" data-tip="Attach files" aria-label="Attach files" onClick={pick}><Plus size={16} /></button>
         <MicButton threadId={thread.id} />
-        {!chatCli ? (
-          <OptionPicker options={modes} value={mode.id} disabled={running} onPick={onAccess} title={mode.detail} danger={mode.danger} label="Access mode" openKey={`${thread.id}:access`} />
-        ) : null}
+        <OptionPicker options={modes} value={mode.id} disabled={running} onPick={onAccess} title={mode.detail} danger={mode.danger} label="Access mode" openKey={`${thread.id}:access`} />
         <span className="grow" />
         <ModelPicker thread={thread} label={thread.overseer ? `Overseer · ${modelLabel.split(' · ')[0]}` : modelLabel} disabled={running} openKey={`${thread.id}:model`} />
         {/* The Overseer sets the effort of each turn itself. */}

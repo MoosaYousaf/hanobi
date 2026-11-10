@@ -3,7 +3,7 @@ const path = require('node:path');
 const { cachedText } = require('./extract');
 
 // A project is a chat workspace in an app-owned folder: instructions, a knowledge/ folder of documents, and its own chats.
-// CLI agents run in that folder with read-only tools. They read the instructions from CLAUDE.md, AGENTS.md, and GEMINI.md,
+// CLI agents run in that folder with the thread's access mode (Ask first by default). They read the instructions from CLAUDE.md, AGENTS.md, and GEMINI.md,
 // and open the documents themselves. API and local models get the instructions and the document text in the system prompt.
 // PDF, Word, RTF, OpenDocument, PowerPoint, and Excel documents are converted to text by extract.js.
 const CONTEXT_FILES = ['CLAUDE.md', 'AGENTS.md', 'GEMINI.md'];

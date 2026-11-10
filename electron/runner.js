@@ -232,7 +232,7 @@ class Runner {
       // Claude Code's suggestion can arrive after the reply is saved; it goes first in the list.
       const onSuggestion = suggestion => { if (saved) this.addSuggestions(threadId, saved.id, [suggestion], true); else draft.suggestions = [...new Set([...draft.suggestions, suggestion])]; };
       if (preset.kind === 'cli') {
-        result = await cli.run({ ...common, preset, history, prompt: [attachmentBlock(attached, attachments, { paths: true }), text].filter(Boolean).join('\n\n'), cwd: workspace.path, chat, mcpServers: this.mcp.enabledConfigs(), onSuggestion,
+        result = await cli.run({ ...common, preset, history, prompt: [attachmentBlock(attached, attachments, { paths: true }), text].filter(Boolean).join('\n\n'), cwd: workspace.path, mcpServers: this.mcp.enabledConfigs(), onSuggestion,
           onSession: id => { if (id !== thread.sessionId) this.store.update(threadId, { sessionId: id, replay: false }); },
           approve: request => this.ask(threadId, { server: preset.name, ...request }),
           question: request => this.question(threadId, { server: preset.name, ...request }) });

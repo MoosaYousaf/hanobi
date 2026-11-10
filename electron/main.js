@@ -6,7 +6,7 @@ const os = require('node:os');
 const { Store } = require('./store');
 const { Secrets } = require('./secrets');
 const { Mcp } = require('./mcp');
-const { Runner } = require('./runner');
+const { Runner, mapMode } = require('./runner');
 const { presets, modes } = require('./providers/catalog');
 const projects = require('./projects');
 
@@ -246,7 +246,10 @@ const handlers = {
   'thread:new': (workspaceId, settings) => {
     const base = settings || store.data.preferences.lastModel || { connectionId: runner.connections().find(c => c.ready)?.id || 'claude-code', model: '', effort: '', mode: 'auto' };
     const thread = store.addThread(workspaceId, { connectionId: base.connectionId, model: '', effort: '', mode: 'auto' });
-    try { runner.setThreadSettings(thread.id, base); } catch {}
+    // A chat starts at Ask first, whatever access the last code conversation had, and does not change that default.
+    const chat = store.workspace(workspaceId).kind !== 'code', last = store.data.preferences.lastModel;
+    try { runner.setThreadSettings(thread.id, chat ? { ...base, mode: 'ask' } : base); } catch {}
+    if (chat) store.data.preferences.lastModel = last;
     changed(); return threadView(thread.id);
   },
   'thread:pin': (id, pinned) => { store.thread(id).pinned = !!pinned; store.save(); changed(); },
@@ -454,6 +457,16 @@ app.whenReady().then(() => {
     if (jobs.some(j => lastStates.get(j.id) !== j.state) || lastStates.size !== jobs.length) { lastStates.clear(); for (const j of jobs) lastStates.set(j.id, j.state); changed(); }
   } });
   runner = new Runner({ store, secrets, mcp, send, files, limits, local: { engine, library }, catalog: new ModelCatalog({ file: path.join(app.getPath('userData'), 'models-catalog.json') }) });
+  // Chats used to run read-only whatever their saved access mode said. Once, they move to Ask first (or the closest mode
+  // of their provider), so no old chat gets more access than before without a prompt.
+  if (!store.data.preferences.chatAccess) {
+    for (const thread of store.data.threads) {
+      if (store.data.workspaces.find(w => w.id === thread.workspaceId)?.kind === 'code') continue;
+      try { const mode = mapMode('ask', runner.resolve(thread.connectionId).preset); thread.mode = mode; thread.baseMode = mode; } catch {}
+    }
+    store.data.preferences.chatAccess = true;
+    store.save();
+  }
   nativeTheme.themeSource = ['light', 'dark'].includes(store.data.preferences.theme) ? store.data.preferences.theme : 'system';
   // A general folder for chats that do not belong to a project.
   const general = path.join(app.getPath('userData'), 'Chats');

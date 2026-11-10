@@ -353,9 +353,9 @@ test('projects: instructions files for CLIs, documents, and the API context', as
     projects.removeFile(project, 'quote.pdf');
     assert.ok(!fs.existsSync(path.join(project.path, 'knowledge', '.text', 'quote.pdf.txt')));
   }
-  // CLI chats read and change nothing; old workspaces become code folders.
-  assert.deepEqual(command('claude', { mode: 'full', chat: true }).filter(a => a === '--tools' || a === 'Read,Glob,Grep' || a === 'bypassPermissions'), ['--tools', 'Read,Glob,Grep']);
-  assert.ok(command('codex', { mode: 'full', chat: true }).includes('read-only'));
+  // Chats follow the access mode like code (Claude Code in Ask first gets no tool limit); old workspaces become code folders.
+  assert.ok(!command('claude', { mode: 'ask' }).includes('--tools'));
+  assert.ok(command('codex', { mode: 'auto' }).includes('workspace-write'));
   assert.equal(migrate({ version: 2, workspaces: [{ id: 'w', name: 'x', path: '/x' }] }).workspaces[0].kind, 'code');
 });
 

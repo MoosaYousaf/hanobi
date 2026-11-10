@@ -23,6 +23,8 @@ const presets = {
   'github-models': { kind: 'openai', name: 'GitHub Models', route: 'key', needsKey: true, baseURL: 'https://models.github.ai/inference', modelsURL: 'https://models.github.ai/catalog/models', efforts: [''], keyUrl: 'https://github.com/settings/personal-access-tokens' },
   ollama: { kind: 'openai', name: 'Ollama', route: 'local', needsKey: false, baseURL: 'http://localhost:11434/v1', efforts: [''] },
   lmstudio: { kind: 'openai', name: 'LM Studio', route: 'local', needsKey: false, baseURL: 'http://localhost:1234/v1', efforts: [''] },
+  // Built in: the models the user downloaded run on this Mac through the local engine (electron/llama.js).
+  'orin-local': { kind: 'openai', name: 'On this Mac', route: 'local', needsKey: false, baseURL: '', efforts: [''], builtin: true, note: 'Models you downloaded run on this Mac with the local engine.' },
   custom: { kind: 'openai', name: 'OpenAI-compatible', route: 'key', needsKey: false, baseURL: '', efforts: ['', 'low', 'medium', 'high'] }
 };
 

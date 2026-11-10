@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { X, Plus, RefreshCw, Trash2, ExternalLink, Plug, Cpu, SlidersHorizontal, Pencil } from 'lucide-react';
 import { useStore, setUi, call, guard, toast, askConfirm } from '../store.js';
 import { routeIcon } from './ModelPicker.jsx';
+import { LocalModels } from './LocalModels.jsx';
 import { routeLabel } from '../labels.js';
 
 const sections = [
@@ -55,7 +56,8 @@ function ModelsPane() {
   const presets = useStore(s => s.app.presets);
   const [editing, setEditing] = useState(null); // 'new' | connection
   const clis = connections.filter(c => c.kind === 'cli');
-  const apis = connections.filter(c => c.kind !== 'cli');
+  // The built-in "On this Mac" connection has its own section below.
+  const apis = connections.filter(c => c.kind !== 'cli' && c.preset !== 'orin-local');
   return (
     <>
       <h2>Models</h2>
@@ -88,6 +90,7 @@ function ModelsPane() {
         })}
       </ul>
       {!editing ? <button className="btn" onClick={() => setEditing('new')}><Plus size={14} /> Add a provider</button> : null}
+      <LocalModels />
     </>
   );
 }

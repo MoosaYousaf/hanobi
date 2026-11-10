@@ -10,7 +10,7 @@ const { Runner } = require('./runner');
 const { presets, modes } = require('./providers/catalog');
 const projects = require('./projects');
 
-const { cliPath } = require('./providers/cli');
+const { cliPath, searchPath: cliSearchPath } = require('./providers/cli');
 const git = require('./git');
 const github = require('./github');
 const { Files, safeName, mediaType } = require('./files');
@@ -21,6 +21,8 @@ const desktop = require('./desktop');
 const { Limits } = require('./limits');
 const { migrateFromHanobi } = require('./rename');
 const { ModelCatalog } = require('./models-catalog');
+const hf = require('./hf');
+const { Engine, toolPath } = require('./llama');
 // From package.json, not from Electron: a script started with `electron <file>` reports Electron's version.
 const VERSION = require('../package.json').version;
 
@@ -34,7 +36,7 @@ if (!process.env.ORIN_USER_DATA) try { migrateFromHanobi(app.getPath('appData'),
 // One Orin at a time: a second launch shows the open window.
 if (!app.requestSingleInstanceLock()) app.quit();
 const windows = new Set();
-let store, secrets, mcp, runner, files, speech, limits, attention, update = null, shortcutError = '';
+let store, secrets, mcp, runner, files, speech, limits, attention, library, downloads, engine, update = null, shortcutError = '';
 
 function send(channel, value) {
   for (const win of windows) if (!win.isDestroyed()) win.webContents.send(channel, value);
@@ -118,6 +120,7 @@ function state() {
     connections: runner.connections(),
     presets: Object.fromEntries(Object.entries(presets).map(([id, p]) => [id, { name: p.name, kind: p.kind, route: p.route, needsKey: !!p.needsKey, baseURL: p.baseURL || '', efforts: p.efforts, keyUrl: p.keyUrl || '', note: p.note || '', customModels: !!p.customModels, asks: !!p.asks, ...(p.kind === 'cli' ? { models: p.models, cli: p.cli } : {}) }])),
     voice: { language: store.data.preferences.voice?.language || 'en', available: speech.available() },
+    local: { engine: engine.status(), downloads: downloads.list(), models: library.list() },
     desktop: { version: VERSION, packaged: app.isPackaged, openAtLogin: app.isPackaged && app.getLoginItemSettings().openAtLogin, shortcut: store.data.preferences.shortcut ?? desktop.DEFAULT_SHORTCUT, shortcutError, notify: store.data.preferences.notify !== false, update },
     modes, mcpStatus: mcp.statuses(), running: Object.keys(runner.live()), warning: store.warning, secretsAvailable: secrets.available()
   };
@@ -256,6 +259,21 @@ const handlers = {
   'run:answer': (questionId, answers) => runner.answer(questionId, answers),
   'models:list': id => runner.models(id),
   'models:refresh': async id => { const models = await runner.refreshModels(id); changed(); return models; },
+  // Local models: search and download from Hugging Face, and the engine that runs them. Main looks the file up again
+  // on Hugging Face, so the size and the SHA-256 never come from the renderer.
+  'local:search': (query, sort) => hf.search({ query: String(query || ''), sort: String(sort || 'trending'), base: process.env.ORIN_HF_BASE || undefined }),
+  'local:files': repo => hf.files(String(repo), { base: process.env.ORIN_HF_BASE || undefined }),
+  'local:download': async (repo, file) => {
+    const entry = (await hf.files(String(repo), { base: process.env.ORIN_HF_BASE || undefined })).find(f => f.path === file);
+    if (!entry) throw new Error('That file is not in the repository.');
+    if (entry.fit === 'no') throw new Error('This model is too big for the memory of this Mac. Choose a smaller file.');
+    return downloads.start(String(repo), entry);
+  },
+  'local:cancel': id => downloads.cancel(String(id)),
+  'local:remove': async id => { if (engine.status().server?.model === id) await engine.stop(); library.remove(String(id)); downloads.jobs.delete(String(id)); changed(); },
+  'local:install-engine': () => { engine.installEngine().catch(() => {}); },
+  'local:cancel-install': () => engine.cancelInstall(),
+  'local:unload': () => engine.stop(),
   'connection:save': input => {
     const preset = presets[input.preset];
     if (!preset || preset.kind === 'cli') throw new Error('Choose a provider.');
@@ -409,7 +427,15 @@ app.whenReady().then(() => {
   // Smoke runs give fixed readings instead of the user's real accounts.
   const fixture = process.env.ORIN_LIMITS_FIXTURE ? JSON.parse(process.env.ORIN_LIMITS_FIXTURE) : null;
   limits = new Limits({ cliPath, ...(fixture ? { sources: Object.fromEntries(Object.entries(fixture).map(([cli, reading]) => [cli, async () => reading])) } : {}), onChange: (cli, reading) => send('limits', { cli, ...reading }) });
-  runner = new Runner({ store, secrets, mcp, send, files, limits, catalog: new ModelCatalog({ file: path.join(app.getPath('userData'), 'models-catalog.json') }) });
+  library = new hf.Library({ root: path.join(app.getPath('userData'), 'Models') });
+  engine = new Engine({ dir: path.join(app.getPath('userData'), 'engine'), library, which: name => toolPath(name, cliSearchPath()), onChange: status => send('local', { engine: status }) });
+  // Progress only updates the download list; a finished or failed download also refreshes the models and connections.
+  const lastStates = new Map();
+  downloads = new hf.Downloads({ library, base: () => process.env.ORIN_HF_BASE, onChange: jobs => {
+    send('local', { downloads: jobs });
+    if (jobs.some(j => lastStates.get(j.id) !== j.state) || lastStates.size !== jobs.length) { lastStates.clear(); for (const j of jobs) lastStates.set(j.id, j.state); changed(); }
+  } });
+  runner = new Runner({ store, secrets, mcp, send, files, limits, local: { engine, library }, catalog: new ModelCatalog({ file: path.join(app.getPath('userData'), 'models-catalog.json') }) });
   nativeTheme.themeSource = ['light', 'dark'].includes(store.data.preferences.theme) ? store.data.preferences.theme : 'system';
   // A general folder for chats that do not belong to a project.
   const general = path.join(app.getPath('userData'), 'Chats');
@@ -440,4 +466,4 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('will-quit', () => globalShortcut.unregisterAll());
-app.on('before-quit', () => { speech?.cancel(); runner?.stopAll(); mcp?.closeAll(); store?.flush(); });
+app.on('before-quit', () => { speech?.cancel(); engine?.close(); runner?.stopAll(); mcp?.closeAll(); store?.flush(); });

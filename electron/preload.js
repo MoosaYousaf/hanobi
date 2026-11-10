@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 // Main registers one handler per action, so only those channels answer an invoke.
-const events = new Set(['changed', 'thread-changed', 'run-update', 'run-state', 'approval', 'approval-done', 'question', 'git-changed', 'menu', 'open-thread', 'voice', 'limits']);
+const events = new Set(['changed', 'thread-changed', 'run-update', 'run-state', 'approval', 'approval-done', 'question', 'git-changed', 'menu', 'open-thread', 'voice', 'limits', 'local']);
 contextBridge.exposeInMainWorld('orin', {
   invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
   // The path of a dropped or pasted File; empty when it has none (for example a screenshot in the clipboard).

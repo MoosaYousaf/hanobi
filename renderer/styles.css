@@ -645,3 +645,26 @@ kbd { font: 500 11px var(--mono); padding: 1px 5px; border: 1px solid var(--bord
 .overseer-models { display: grid; gap: 2px; margin-top: 6px; }
 
 .pick-new { flex: none; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; background: var(--accent); color: var(--on-accent); }
+
+/* Local models */
+.bar { height: 4px; border-radius: 999px; background: var(--border-strong); overflow: hidden; margin-top: 5px; }
+.bar i { display: block; height: 100%; background: var(--accent); border-radius: inherit; transition: width .3s var(--ease); }
+.local-engine .row-main { min-width: 0; }
+.finder { display: grid; gap: 8px; margin-top: 4px; }
+.finder-bar { display: flex; gap: 8px; align-items: center; }
+.finder-bar .pick-search { flex: 1; border: 1px solid var(--border-strong); border-radius: 8px; }
+.finder-results { max-height: 380px; overflow-y: auto; }
+.finder-item { border-bottom: 1px solid var(--border); }
+.finder-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 6px; text-align: left; border-radius: 7px; }
+.finder-head:hover { background: var(--hover); }
+.finder-head .chev { flex: none; color: var(--text-3); transition: transform var(--fast) var(--ease); }
+.finder-item.open .chev { transform: rotate(90deg); }
+.finder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
+.finder-meta { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.local-files { list-style: none; margin: 0 0 8px; padding: 0 0 0 24px; display: grid; gap: 4px; }
+.local-files li { display: grid; grid-template-columns: 74px minmax(0, 1fr) 64px 150px 96px 112px; align-items: center; gap: 8px; font-size: 12px; }
+.lf-quant { font-family: var(--mono); font-size: 11px; color: var(--text-2); }
+.lf-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); }
+.lf-size { font-variant-numeric: tabular-nums; text-align: right; }
+.lf-fit.ok { color: var(--success); } .lf-fit.warn { color: var(--warning); } .lf-fit.bad { color: var(--danger); }
+.lf-rec { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-2); }

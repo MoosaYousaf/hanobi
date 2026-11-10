@@ -58,6 +58,9 @@ systemPreferences.askForMediaAccess = async () => false;
 // Save dialogs answer with a fixed path, so downloads run without a person.
 let saveTarget = null;
 dialog.showSaveDialog = async () => ({ canceled: !saveTarget, filePath: saveTarget });
+// Local models: a fake Hugging Face answers search, file lists, and downloads.
+let hfServer;
+const hfReady = require('../test/fixtures/fake-hf.cjs').server().then(({ srv, base }) => { hfServer = srv; process.env.ORIN_HF_BASE = base; });
 require('../electron/main.js');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -83,6 +86,7 @@ async function shot(win, name) {
 const errors = [];
 app.whenReady().then(async () => {
   try {
+    await hfReady;
     await sleep(300);
     const win = BrowserWindow.getAllWindows()[0];
     if (win.webContents.isLoading()) await new Promise(r => win.webContents.once('did-finish-load', r));
@@ -238,6 +242,22 @@ app.whenReady().then(async () => {
     await clickText(win, '.settings .btn', 'Add a provider');
     await until(win, `!!document.querySelector('.preset-grid')`, 'provider form opens');
     await shot(win, '3-settings');
+    // Local models: engine row, search, the file list with a fit rating, a download, and delete.
+    await until(win, `[...document.querySelectorAll('.settings h3')].some(h => h.textContent === 'On this Mac') && document.querySelector('.local-engine')?.textContent.includes('Local engine')`, 'the Models pane shows the local engine');
+    await clickText(win, '.settings .btn', 'Find models');
+    await until(win, `document.querySelector('.finder-name')?.textContent === 'acme/tiny-GGUF'`, 'search lists the fake repository');
+    await click(win, '.finder-head');
+    await until(win, `document.querySelectorAll('.local-files li').length === 4 && document.querySelector('.local-files .lf-rec') && [...document.querySelectorAll('.local-files .btn')].some(b => b.disabled)`, 'files list with a recommended file and a too-big file that cannot download');
+    await win.webContents.executeJavaScript(`document.querySelector('.local-engine').scrollIntoView({ block: 'start' })`);
+    await sleep(200);
+    await shot(win, '3b-local');
+    await click(win, '.local-files .btn.primary');
+    await until(win, `[...document.querySelectorAll('.local-files .btn')].some(b => b.textContent === 'Downloaded')`, 'the download finishes', 15000);
+    await until(win, `[...document.querySelectorAll('.settings .row strong')].some(s => s.textContent === 'tiny · Q4_K_M')`, 'the downloaded model is listed');
+    await win.webContents.executeJavaScript(`document.querySelector('.settings .row .icon-btn[title="Delete from this Mac"]').click()`);
+    await until(win, `!!document.querySelector('.dialog .btn.danger') && document.querySelector('.dialog-title').textContent === 'Delete tiny-Q4_K_M.gguf?'`, 'delete asks first');
+    await click(win, '.dialog .btn.danger');
+    await until(win, `![...document.querySelectorAll('.settings .row strong')].some(s => s.textContent === 'tiny · Q4_K_M')`, 'the model is deleted');
     await clickText(win, '.settings-nav button', 'Connectors');
     await clickText(win, '.settings .row .btn', 'Connect');
     await until(win, `[...document.querySelectorAll('.settings .row .btn')].some(b => b.textContent === 'Disconnect') && document.querySelector('.settings .row').textContent.includes('1 tool')`, 'connector connects', 15000);
@@ -337,7 +357,7 @@ app.whenReady().then(async () => {
     })()`);
     await until(win, `(${JSON.stringify(listed)}).at(-1) === [...[...document.querySelectorAll('.ws')].find(w => w.querySelectorAll('.thread-row').length > 1).querySelectorAll('.thread-row .thread-title')][0].textContent`, 'dragging a conversation reorders the list');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
-    process.stdout.write('Smoke passed: home, ghost-text suggestion, inline completion, suggestion chips, / commands, @ file mentions, saved messages, live reply with approval, elapsed time and background work, themed access and effort pickers, new conversation, model picker, settings, connector connect and disconnect, Overseer, connector presets, dark and light themes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, Mermaid diagrams, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
+    process.stdout.write('Smoke passed: home, ghost-text suggestion, inline completion, suggestion chips, / commands, @ file mentions, saved messages, live reply with approval, elapsed time and background work, themed access and effort pickers, new conversation, model picker, settings, connector connect and disconnect, Overseer, local models (search, files, download, delete), connector presets, dark and light themes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, Mermaid diagrams, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits.\n');
     app.exit(0);
   } catch (error) {
     if (errors.length) console.error('Console errors:\n' + errors.join('\n')); process.stderr.write(String(error.stack || error) + '\n'); app.exit(1); }

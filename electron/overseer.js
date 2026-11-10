@@ -56,7 +56,8 @@ function candidates({ connections, modelsOf, presets, prefs = {}, used = new Set
     for (const m of modelsOf(c.id) || []) {
       if (!m.id || m.id === 'auto') continue;
       const id = `${c.id}::${m.id}`;
-      const on = !exclude.has(id) && (preset.kind !== 'cli' || used.has(c.id) || include.has(id));
+      // A CLI may be installed but not signed in, and a local model is slow on a small Mac: both need a reply or a choice.
+      const on = !exclude.has(id) && (preset.kind !== 'cli' && c.route !== 'local' || used.has(c.id) || include.has(id));
       if (on || all) out.push({ id, on, connectionId: c.id, model: m.id, label: `${m.label || m.id} · ${c.name}`, route: c.route, cli: preset.cli, efforts: preset.efforts, tier: (c.route !== 'local' && catalogTier?.(m.id)) || tierOf(m.id, c.route), price: c.route === 'local' ? 0 : priceOf?.(m.id) ?? null });
     }
   }

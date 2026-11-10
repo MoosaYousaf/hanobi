@@ -41,6 +41,7 @@ Orin runs on macOS 12 Monterey and later, including Intel Macs. It pins Electron
 - Git panel: status, diffs, stage, unstage, and commit. Switch or create branches, see commits to push and pull, push, publish a new branch, and pull (fast-forward only).
 - GitHub pull requests through the GitHub CLI (`gh`): the pull request of the current branch with its state, review decision, and checks; create one (title, Markdown description, base branch, draft); list open pull requests, open them on GitHub, or check them out. Run `gh auth login` once. Orin stores no GitHub token.
 - A list of the skills that your CLI agents load.
+- Local models: search Hugging Face in Settings → Models, see which files fit this Mac's memory, download with resume and a checksum, and chat with them offline. Orin builds the `llama.cpp` engine once on your Mac (needs the Xcode Command Line Tools and CMake), because Ollama and LM Studio do not run on macOS 12.
 - Overseer: choose it in the model menu, and Orin picks the model and effort for each message. It stays on one model while the task stays the same, and moves work away from a plan near its limit.
 - A monochrome theme: Dark (true black, the default), Light, or System.
 - A **…** menu on each conversation in the sidebar: Rename, Open in split pane, Pin to top, Move to project or workspace, and Delete.

@@ -16,6 +16,7 @@ const overseer = require('./overseer');
 const codexServer = require('./providers/codex-server');
 
 const UPDATE_MS = 60;
+const LOCAL_ID = 'orin-local';
 
 const SKIPPED = 'The user skipped the questions. Continue with your best judgment, or ask in plain text.';
 // API and local models get this tool next to the MCP tools, so any model can ask structured questions.
@@ -56,8 +57,8 @@ function validAnswers(questions, answers) {
 }
 
 class Runner {
-  constructor({ store, secrets, mcp, send, files, limits, catalog }) {
-    Object.assign(this, { store, secrets, mcp, send, files, limits, catalog });
+  constructor({ store, secrets, mcp, send, files, limits, catalog, local }) {
+    Object.assign(this, { store, secrets, mcp, send, files, limits, catalog, local });
     this.runs = new Map(); // threadId -> { controller, draft }
     this.approvals = new Map(); // approvalId -> resolve
   }
@@ -70,7 +71,13 @@ class Runner {
       const hasKey = this.secrets.has(`key:${c.id}`);
       return { ...c, route: p.route, kind: p.kind, hasKey, ready: !p.needsKey || hasKey, detail: p.needsKey && !hasKey ? 'API key missing' : c.baseURL || p.baseURL || 'Anthropic API' };
     });
-    return [...clis, ...apis];
+    // Downloaded models run through the local engine; this connection is always there and ready when both exist.
+    const local = this.local ? [(() => {
+      const hasModels = this.local.library.list().length > 0, installed = this.local.engine.installed();
+      return { id: LOCAL_ID, preset: LOCAL_ID, name: presets[LOCAL_ID].name, route: 'local', kind: 'openai', hasKey: false, ready: installed && hasModels,
+        detail: !installed ? 'Install the local engine in Settings → Models' : !hasModels ? 'Download a model in Settings → Models' : 'Runs on this Mac' };
+    })()] : [];
+    return [...clis, ...apis, ...local];
   }
   resolve(connectionId) {
     const connection = this.connections().find(c => c.id === connectionId);
@@ -81,12 +88,15 @@ class Runner {
   // else the built-in list. Models released in the last 14 days are marked isNew.
   models(connectionId) {
     const { preset } = this.resolve(connectionId);
+    if (connectionId === LOCAL_ID) return this.localModels();
     const cached = this.store.data.modelCache[connectionId]?.models;
     const list = preset.kind === 'cli' ? (cached?.length ? [preset.models[0], ...cached.filter(m => m.id)] : preset.models) : cached || [];
     return this.catalog ? list.map(m => (m.id && !m.isNew && this.catalog.isNew(m.id) ? { ...m, isNew: true } : m)) : list;
   }
+  localModels() { return (this.local?.library.list() || []).map(m => ({ id: m.id, label: `${m.repo.split('/')[1].replace(/-GGUF$/i, '')} · ${m.quant || 'GGUF'}` })); }
   async refreshModels(connectionId) {
     const { connection, preset } = this.resolve(connectionId);
+    if (connectionId === LOCAL_ID) return this.localModels();
     let models;
     if (preset.kind === 'cli') {
       if (preset.cli === 'claude' && this.catalog) { await this.catalog.refresh({ force: true }); models = this.catalog.claudeModels(); }
@@ -227,15 +237,22 @@ class Runner {
           approve: request => this.ask(threadId, { server: preset.name, ...request }),
           question: request => this.question(threadId, { server: preset.name, ...request }) });
       } else {
-        const tools = [...await this.mcp.tools(), ASK_TOOL, ...(this.files ? [WRITE_TOOL] : [])];
+        // A small local model misuses Orin's own tools (a 0.5B model asked about 50 junk questions in a row), and their
+        // text costs about 1,600 tokens of prompt on every first turn. Local models get only the connectors the user added.
+        const local = connection.id === LOCAL_ID;
+        const tools = [...await this.mcp.tools(), ...(local ? [] : [ASK_TOOL, ...(this.files ? [WRITE_TOOL] : [])])];
         const system = [this.store.data.preferences.systemPrompt, workspace.kind === 'project' ? await projects.apiContext(workspace) : ''].filter(Boolean).join('\n\n');
         const api = { ...common, attachments, apiKey: this.secrets.get(`key:${connection.id}`), system: system || undefined, tools, callTool: this.toolCaller(threadId, tools, draft) };
-        result = preset.kind === 'anthropic' ? await anthropic.run(api) : await openai.run({ ...api, baseURL: connection.baseURL || preset.baseURL });
+        // A downloaded model needs the engine running with it. The thinking text shows while it loads into memory.
+        const baseURL = local ? await this.local.engine.use(thread.model, { signal: controller.signal, onStatus: text => draft.write('thinking', `${text}\n`) }) : connection.baseURL || preset.baseURL;
+        try { result = preset.kind === 'anthropic' ? await anthropic.run(api) : await openai.run({ ...api, baseURL }); }
+        finally { if (local) this.local.engine.done(); }
       }
       const stopped = controller.signal.aborted;
       saved = finish(stopped && !draft.parts.length ? null : { parts: draft.final(), native: result?.native, ...(stopped ? { stopped: true } : {}) });
       // Claude Code makes one suggestion of its own. With the setting on, every model makes up to three with one extra request.
-      if (saved && !stopped && !saved.error && this.store.data.preferences.suggestReplies) this.suggestReplies(threadId, connection, preset, saved).catch(() => {});
+      // Suggestions from a local model would load it again and take minutes on a small Mac, so they are skipped.
+      if (saved && !stopped && !saved.error && connection.id !== LOCAL_ID && this.store.data.preferences.suggestReplies) this.suggestReplies(threadId, connection, preset, saved).catch(() => {});
     } catch (error) {
       // A user stop is not a failure: keep whatever arrived and mark it stopped.
       if (controller.signal.aborted) finish(draft.parts.length ? { parts: draft.final(), stopped: true } : null);

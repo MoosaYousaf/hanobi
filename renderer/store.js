@@ -112,6 +112,8 @@ export async function newThread(workspaceId, { split = false } = {}) {
 
 export function start() {
   api.on('changed', () => refresh().catch(toast));
+  // Engine status and download progress arrive on their own, without a full refresh.
+  api.on('local', patch => set(s => (s.app ? { app: { ...s.app, local: { ...s.app.local, ...patch } } } : {})));
   api.on('thread-changed', ({ threadId }) => { if (state.threads[threadId] || state.ui.threadId === threadId) loadThread(threadId).catch(toast); refresh().catch(toast); });
   api.on('run-update', ({ threadId, parts }) => set(s => ({ live: { ...s.live, [threadId]: parts } })));
   api.on('run-state', ({ threadId, running, error, startedAt }) => {

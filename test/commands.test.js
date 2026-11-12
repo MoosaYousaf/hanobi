@@ -82,7 +82,9 @@ test('helper requests to Claude Code load no MCP servers', () => {
 });
 
 test('suggested replies use Haiku on Claude connections and the thread model elsewhere', () => {
-  assert.equal(suggest.model(presets['claude-code'], 'claude-opus-5-5'), 'claude-haiku-5-5');
+  assert.equal(suggest.model(presets['claude-code'], 'claude-opus-5-5'), 'haiku');
+  assert.equal(suggest.model(presets['claude-code'], ''), 'haiku');
   assert.equal(suggest.model(presets.anthropic, 'claude-opus-5-5'), 'claude-haiku-5-5');
   assert.equal(suggest.model(presets.codex, 'gpt-5.5'), 'gpt-5.5');
+  assert.equal(suggest.model(presets.copilot, 'claude-sonnet-5-5'), 'claude-sonnet-5-5');
 });

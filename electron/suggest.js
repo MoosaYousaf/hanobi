@@ -25,7 +25,7 @@ function parse(text) {
 }
 
 // The small Claude model is enough for suggestions and costs much less quota. Other providers keep the thread model.
-const HAIKU = 'claude-haiku-5-5';
-const model = (preset, threadModel) => (preset.cli === 'claude' || preset.kind === 'anthropic' ? HAIKU : threadModel);
+// Claude Code gets the alias, which it maps for Bedrock, Vertex, and gateways; the API gets the router's model ID.
+const model = (preset, threadModel) => (preset.cli === 'claude' ? 'haiku' : preset.kind === 'anthropic' ? require('./overseer').ROUTER.model : threadModel);
 
 module.exports = { prompt, parse, model, MAX };

@@ -79,7 +79,19 @@ async function until(win, script, label, timeout = 5000) {
 }
 // Errors thrown in the page lose their message, so a missing element is reported from here.
 const click = async (win, selector) => { if (!await win.webContents.executeJavaScript(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; el.click(); return true; })()`)) throw new Error(`Missing ${selector}`); };
-const clickText = async (win, selector, text) => { if (!await win.webContents.executeJavaScript(`(() => { const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find(e => e.textContent.includes(${JSON.stringify(text)})); if (!el) return false; el.click(); return true; })()`)) throw new Error(`Missing ${text} in ${selector}`); };
+// The first element for the selector whose text includes `text`, as page script.
+const find = (selector, text) => `[...document.querySelectorAll(${JSON.stringify(selector)})].find(e => e.textContent.includes(${JSON.stringify(text)}))`;
+const clickText = async (win, selector, text) => { if (!await win.webContents.executeJavaScript(`(() => { const el = ${find(selector, text)}; if (!el) return false; el.click(); return true; })()`)) throw new Error(`Missing ${text} in ${selector}`); };
+// A real mouse press (down, then up) at the middle of an element. el.click() skips :active, so it cannot catch
+// a layout that moves under the pointer during the press.
+async function press(win, selector, text) {
+  const box = await win.webContents.executeJavaScript(`(() => { const el = ${find(selector, text)}; if (!el) return null; const r = el.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+  if (!box) throw new Error(`Missing ${text} in ${selector}`);
+  win.webContents.sendInputEvent({ type: 'mouseMove', ...box });
+  win.webContents.sendInputEvent({ type: 'mouseDown', ...box, button: 'left', clickCount: 1 });
+  await sleep(150);
+  win.webContents.sendInputEvent({ type: 'mouseUp', ...box, button: 'left', clickCount: 1 });
+}
 async function shot(win, name) {
   if (!process.env.SMOKE_SHOTS) return;
   for (const theme of ['light', 'dark']) {
@@ -344,14 +356,21 @@ app.whenReady().then(async () => {
     })()`);
     await until(win, `Math.abs(document.querySelector('.pane').getBoundingClientRect().width - ${before} - 120) < 4`, 'divider resizes panes');
     await shot(win, '8-split');
-    await win.webContents.executeJavaScript(`[...document.querySelectorAll('.thread-row')].find(r => r.textContent.includes('Parse the release notes')).querySelector('.thread-more').click()`);
+    const openThreadMenu = () => win.webContents.executeJavaScript(`${find('.thread-row', 'Parse the release notes')}.querySelector('.thread-more').click()`);
+    await openThreadMenu();
     await until(win, `['Rename', 'Open in split pane', 'Pin to top', 'Move to workspace', 'Delete'].every(t => [...document.querySelectorAll('.menu .menu-item')].some(b => b.textContent === t))`, 'thread menu opens');
     await shot(win, '9-menu');
+    // A second real click on the same button closes the menu (no close on mousedown, open again on click).
+    await press(win, '.thread-row.menu-open .thread-more', ''); // '' matches the one open row
+    await sleep(200);
+    if (await win.webContents.executeJavaScript(`!!document.querySelector('.menu')`)) throw new Error('a second click on the thread menu button opens the menu again');
+    await openThreadMenu();
+    await until(win, `!!document.querySelector('.menu')`, 'thread menu opens again');
     await clickText(win, '.menu .menu-item', 'Pin to top');
     await until(win, `[...document.querySelectorAll('.ws-name')].some(e => e.textContent === 'Pinned')`, 'pinned group shows');
-    await win.webContents.executeJavaScript(`[...document.querySelectorAll('.thread-row')].find(r => r.textContent.includes('Parse the release notes')).querySelector('.thread-more').click()`);
-    await clickText(win, '.menu .menu-item', 'Delete');
-    await until(win, `!!document.querySelector('.dialog .btn.danger') && document.querySelector('.dialog-title').textContent.includes('Parse the release notes')`, 'delete dialog matches the app');
+    await openThreadMenu();
+    await press(win, '.menu .menu-item', 'Delete');
+    await until(win, `!!document.querySelector('.dialog .btn.danger') && document.querySelector('.dialog-title').textContent.includes('Parse the release notes')`, 'a real click on Delete opens the delete dialog');
     await shot(win, '9b-delete');
     await clickText(win, '.dialog .btn', 'Cancel');
     await until(win, `!document.querySelector('.dialog')`, 'delete dialog cancels');

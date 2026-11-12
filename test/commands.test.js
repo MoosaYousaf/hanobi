@@ -75,3 +75,8 @@ let input = ''; process.stdin.on('data', c => input += c).on('end', () => {
     assert.ok(cli.completeArgs('copilot', 'gpt-5-mini').includes('--deny-tool=shell'));
   } finally { process.env.HOME = saved; cli.cliPath('codex', true); fs.rmSync(home, { recursive: true, force: true }); }
 });
+
+test('helper requests to Claude Code load no MCP servers', () => {
+  const args = cli.completeArgs('claude', 'claude-haiku-5-5');
+  assert.ok(args.includes('--strict-mcp-config'));
+});

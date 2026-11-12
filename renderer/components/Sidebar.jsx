@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import { Menu, MenuItem, MenuSeparator } from './Menu.jsx';
 import { Plus, Settings as SettingsIcon, PanelLeftClose, FolderOpen, X, MessageSquare, Code2, MoreHorizontal, Pencil, Columns2, Pin, PinOff, FolderInput, Trash2, ChevronLeft, Check, SquareTerminal } from 'lucide-react';
 import { useStore, setUi, openThread, openInSplit, newThread, deleteThread, call, guard, askText, askConfirm, switchView, openProject, openTerminal } from '../store.js';
@@ -13,14 +13,14 @@ const ago = at => {
 };
 
 // Rename, open in a split pane, pin, move to another chat list, project, or folder, and delete.
-function ThreadMenu({ thread, anchor, onClose }) {
+function ThreadMenu({ thread, anchor, trigger, onClose }) {
   const [moving, setMoving] = useState(false);
   const workspaces = useStore(s => s.app.workspaces);
   const code = workspaces.find(w => w.id === thread.workspaceId)?.kind === 'code';
   const targets = workspaces.filter(w => (w.kind === 'code') === code);
   const act = fn => guard(async () => { onClose(); await fn(); });
   return (
-    <Menu anchor={anchor} onClose={onClose} label={`Options for ${thread.title}`}>
+    <Menu anchor={anchor} trigger={trigger} onClose={onClose} label={`Options for ${thread.title}`}>
       {moving ? <>
         <MenuItem icon={ChevronLeft} onClick={() => setMoving(false)}>Back</MenuItem>
         <MenuSeparator />
@@ -52,6 +52,7 @@ let dragging = null; // { id, ids } of the row being dragged; a drop works only 
 
 const ThreadRow = memo(function ThreadRow({ thread, active, running, ids }) {
   const [anchor, setAnchor] = useState(null);
+  const more = useRef(null);
   const [drop, setDrop] = useState(null); // 'before' | 'after'
   const open = guard(() => openThread(thread.id));
   const index = ids.indexOf(thread.id);
@@ -71,13 +72,13 @@ const ThreadRow = memo(function ThreadRow({ thread, active, running, ids }) {
       {thread.pinned ? <Pin size={11} className="thread-pin" /> : null}
       <span className="thread-title">{thread.title}</span>
       {running ? <span className="dot-live" aria-label="Running" /> : <span className="thread-time">{ago(thread.updatedAt)}</span>}
-      <button className="thread-more" aria-label={`Options for ${thread.title}`} onClick={e => {
+      <button ref={more} className="thread-more" aria-label={`Options for ${thread.title}`} onClick={e => {
         e.stopPropagation();
         // A hidden button (opened from the keyboard or a script) has no size, so the row gives the position.
         const rect = e.currentTarget.getBoundingClientRect();
         setAnchor(anchor ? null : rect.width ? rect : e.currentTarget.closest('.thread-row').getBoundingClientRect());
       }}><MoreHorizontal size={15} /></button>
-      {anchor ? <span onClick={e => e.stopPropagation()}><ThreadMenu thread={thread} anchor={anchor} onClose={() => setAnchor(null)} /></span> : null}
+      {anchor ? <span onClick={e => e.stopPropagation()}><ThreadMenu thread={thread} anchor={anchor} trigger={more.current} onClose={() => setAnchor(null)} /></span> : null}
     </div>
   );
 });

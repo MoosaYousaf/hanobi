@@ -256,9 +256,11 @@ function runTurn({ preset, thread, history, prompt, cwd, mcpServers, draft, sign
 
 // One short request without a session, tools, or files, for helper text such as suggested replies.
 // It runs in the temporary folder with read-only access and low effort, and returns the reply text.
+// Claude Code: --tools '' also removes ToolSearch, so the user's MCP tools would go in full (~85k tokens a call);
+// --strict-mcp-config loads none.
 function completeArgs(cli, model) {
   if (cli === 'codex') return ['exec', '--json', '--skip-git-repo-check', '--ephemeral', '--sandbox', 'read-only', '-c', 'approval_policy="never"', '-c', 'model_reasoning_effort="low"', ...(model ? ['--model', model] : []), '-'];
-  if (cli === 'claude') return ['-p', '--output-format', 'stream-json', '--verbose', '--tools', '', '--no-session-persistence', ...(model ? ['--model', model] : [])];
+  if (cli === 'claude') return ['-p', '--output-format', 'stream-json', '--verbose', '--tools', '', '--strict-mcp-config', '--no-session-persistence', ...(model ? ['--model', model] : [])];
   return command(cli, { model, effort: 'low', mode: 'read', sessionId: crypto.randomUUID() });
 }
 function complete({ preset, model = '', prompt, signal }) {

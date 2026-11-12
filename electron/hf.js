@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { Readable } = require('node:stream');
+const { pipeline } = require('node:stream/promises');
 
 const BASE = 'https://huggingface.co';
 const REPO = /^[A-Za-z0-9][\w.-]{0,95}\/[A-Za-z0-9][\w.-]{0,95}$/;
@@ -90,7 +91,7 @@ class Library {
         try {
           const note = JSON.parse(fs.readFileSync(path.join(this.root, dir, name), 'utf8'));
           const file = path.join(this.root, dir, name.slice(0, -5));
-          if (fs.existsSync(file)) out.push({ id: `${dir}/${path.basename(file)}`, repo: note.repo, name: path.basename(file), quant: note.quant, size: fs.statSync(file).size, at: note.at });
+          if (fs.existsSync(file)) out.push({ id: `${dir}/${path.basename(file)}`, repo: note.repo, name: path.basename(file), quant: note.quant, size: note.size || fs.statSync(file).size, at: note.at });
         } catch {}
       }
     }
@@ -98,7 +99,17 @@ class Library {
   }
   remove(id) {
     const full = this.resolve(id);
-    fs.rmSync(full, { force: true });
+    let parts;
+    try { parts = JSON.parse(fs.readFileSync(`${full}.json`, 'utf8')).parts; } catch {}
+    if (!parts?.length) {
+      const shard = /^(.*)-\d{5}-of-(\d{5})\.gguf$/i.exec(path.basename(full));
+      parts = shard ? Array.from({ length: Math.min(Number(shard[2]), 10000) }, (_, i) => `${shard[1]}-${String(i + 1).padStart(5, '0')}-of-${shard[2]}.gguf`) : [path.basename(full)];
+    }
+    for (const part of parts) {
+      if (typeof part !== 'string' || part !== path.basename(part) || !/\.gguf$/i.test(part)) throw new Error('Invalid model part.');
+      fs.rmSync(path.join(path.dirname(full), part), { force: true });
+      fs.rmSync(path.join(path.dirname(full), `${part}.part`), { force: true });
+    }
     fs.rmSync(`${full}.json`, { force: true });
     // An empty repository folder goes too, but a folder with other files stays.
     try { fs.rmdirSync(path.dirname(full)); } catch {}
@@ -116,7 +127,9 @@ class Downloads {
   // entry: one item of files(); every part is downloaded in order, then verified by its SHA-256.
   start(repo, entry) {
     check(repo, entry.path);
-    entry.parts.forEach(p => check(repo, p.path));
+    if (!Array.isArray(entry.parts) || !entry.parts.length) throw new Error('Model parts are missing.');
+    entry.parts.forEach(p => { check(repo, p.path); if (!Number.isSafeInteger(p.size) || p.size <= 0) throw new Error('Invalid model size.'); });
+    if (new Set(entry.parts.map(p => path.basename(p.path))).size !== entry.parts.length) throw new Error('Model parts have colliding file names.');
     const id = this.library.idOf(repo, entry.path);
     if (this.jobs.get(id)?.state === 'downloading') throw new Error('This model is already downloading.');
     const job = { id, repo, name: entry.name, quant: entry.quant, size: entry.size, done: 0, state: 'downloading', controller: new AbortController() };
@@ -125,7 +138,10 @@ class Downloads {
     this.run(job, entry).catch(error => {
       job.state = job.controller.signal.aborted ? 'cancelled' : 'failed';
       job.error = job.controller.signal.aborted ? undefined : error.message || String(error);
-      if (job.state === 'cancelled') this.jobs.delete(id);
+      if (job.state === 'cancelled') {
+        for (const part of entry.parts) fs.rmSync(path.join(this.library.dirOf(repo), `${path.basename(part.path)}.part`), { force: true });
+        this.jobs.delete(id);
+      }
       this.onChange(this.list());
     });
     return id;
@@ -139,6 +155,7 @@ class Downloads {
     if (free < entry.size * 1.05 + 0.2 * GB) throw new Error(`There is not enough disk space: ${(entry.size / GB).toFixed(1)} GB needed, ${(free / GB).toFixed(1)} GB free.`);
     let before = 0;
     for (const part of entry.parts) {
+      job.controller.signal.throwIfAborted();
       const target = path.join(dir, path.basename(part.path));
       if (fs.existsSync(target) && fs.statSync(target).size === part.size) { before += part.size; job.done = before; continue; }
       await this.fetchPart(job, part, `${target}.part`, before);
@@ -146,19 +163,27 @@ class Downloads {
       before += part.size;
     }
     const first = path.join(dir, path.basename(entry.path));
-    fs.writeFileSync(`${first}.json`, JSON.stringify({ repo: job.repo, file: entry.path, quant: entry.quant, size: entry.size, at: Date.now() }));
+    fs.writeFileSync(`${first}.json`, JSON.stringify({ repo: job.repo, file: entry.path, parts: entry.parts.map(p => path.basename(p.path)), quant: entry.quant, size: entry.size, at: Date.now() }));
     job.state = 'done';
     job.done = job.size;
     this.onChange(this.list());
   }
 
   async fetchPart(job, part, partFile, before) {
-    const have = fs.existsSync(partFile) ? fs.statSync(partFile).size : 0;
+    let have = fs.existsSync(partFile) ? fs.statSync(partFile).size : 0;
+    if (have >= part.size) { fs.rmSync(partFile, { force: true }); have = 0; }
     // base can be a function, so a test or smoke run can set the address after the app started.
     const base = (typeof this.base === 'function' ? this.base() : this.base) || BASE;
     const url = `${base}/${job.repo}/resolve/main/${part.path.split('/').map(encodeURIComponent).join('/')}`;
     const headers = { 'User-Agent': 'Orin', ...(have ? { Range: `bytes=${have}-` } : {}) };
-    const response = await this.fetch(url, { headers, signal: job.controller.signal });
+    const response = await this.fetch(url, { headers, signal: AbortSignal.any([job.controller.signal, AbortSignal.timeout(30 * 60 * 1000)]) });
+    if (response.status === 416 && have) {
+      await response.body?.cancel(); fs.rmSync(partFile, { force: true });
+      return this.fetchPart(job, part, partFile, before);
+    }
+    if (response.status === 206 && response.headers.get('content-range')?.match(/^bytes (\d+)-/)?.[1] !== String(have)) {
+      await response.body?.cancel(); throw new Error('The server returned an invalid download range.');
+    }
     if (response.status === 401 || response.status === 403) throw new Error('This model needs a Hugging Face sign-in, which Orin does not support.');
     // A server that ignores Range sends the whole file (200): start again from zero.
     const resumed = response.status === 206 && have > 0;
@@ -166,17 +191,19 @@ class Downloads {
     const hash = crypto.createHash('sha256');
     // The part that is already on disk goes through the hash first.
     if (resumed) await new Promise((resolve, reject) => fs.createReadStream(partFile).on('data', c => hash.update(c)).on('end', resolve).on('error', reject));
-    const out = fs.createWriteStream(partFile, { flags: resumed ? 'a' : 'w' });
     let done = resumed ? have : 0, last = 0;
-    try {
-      for await (const chunk of Readable.fromWeb(response.body)) {
+    const self = this;
+    async function* checked(source) {
+      for await (const chunk of source) {
+        if (done + chunk.length > part.size) throw new Error('The download exceeded the expected file size.');
         hash.update(chunk);
-        if (!out.write(chunk)) await new Promise(r => out.once('drain', r));
         done += chunk.length;
         job.done = before + done;
-        if (Date.now() - last > 300) { last = Date.now(); this.onChange(this.list()); }
+        if (Date.now() - last > 300) { last = Date.now(); self.onChange(self.list()); }
+        yield chunk;
       }
-    } finally { await new Promise(r => out.end(r)); }
+    }
+    await pipeline(Readable.fromWeb(response.body), checked, fs.createWriteStream(partFile, { flags: resumed ? 'a' : 'w' }), { signal: job.controller.signal });
     if (done !== part.size) throw new Error(`${path.basename(part.path)} arrived incomplete (${done} of ${part.size} bytes). Try again to resume.`);
     if (part.sha256 && hash.digest('hex') !== part.sha256) { fs.rmSync(partFile, { force: true }); throw new Error(`${path.basename(part.path)} failed its SHA-256 check and was deleted. Try again.`); }
   }

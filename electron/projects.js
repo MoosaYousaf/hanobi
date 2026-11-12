@@ -27,7 +27,7 @@ function writeContext(project) {
 
 function files(project) {
   try {
-    return fs.readdirSync(knowledge(project), { withFileTypes: true }).filter(e => e.isFile() && !e.name.startsWith('.'))
+    return fs.readdirSync(knowledge(project), { withFileTypes: true }).filter(e => e.isFile() && e.name !== '.text')
       .map(e => ({ name: e.name, size: fs.statSync(path.join(knowledge(project), e.name)).size })).sort((a, b) => a.name.localeCompare(b.name));
   } catch { return []; }
 }
@@ -50,7 +50,7 @@ function addFiles(project, sources) {
 }
 
 function removeFile(project, name) {
-  if (typeof name !== 'string' || name !== path.basename(name) || name.startsWith('.')) throw new Error('Invalid file name.');
+  if (typeof name !== 'string' || name !== path.basename(name) || ['.', '..', '.text'].includes(name)) throw new Error('Invalid file name.');
   fs.rmSync(path.join(knowledge(project), name), { force: true });
   fs.rmSync(path.join(knowledge(project), '.text', `${name}.txt`), { force: true });
 }

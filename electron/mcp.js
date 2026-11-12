@@ -84,8 +84,9 @@ class Mcp {
     await this.disconnect(id);
     const provider = new OAuthProvider(this.secrets, id);
     const transport = this.transport(server, provider);
+    let listener, timeout;
     const code = new Promise((resolve, reject) => {
-      const listener = http.createServer((req, res) => {
+      listener = http.createServer((req, res) => {
         const url = new URL(req.url, REDIRECT);
         if (url.pathname !== '/callback') { res.writeHead(404).end(); return; }
         const value = url.searchParams.get('code');
@@ -95,15 +96,24 @@ class Mcp {
       });
       listener.on('error', reject);
       listener.listen(CALLBACK_PORT, '127.0.0.1');
-      setTimeout(() => { listener.close(); reject(new Error('Sign-in timed out.')); }, 5 * 60 * 1000).unref();
+      timeout = setTimeout(() => { listener.close(); reject(new Error('Sign-in timed out.')); }, 5 * 60 * 1000);
+      timeout.unref();
     });
+    code.catch(() => {});
+    const client = new Client({ name: 'orin', version: '1.0.0' });
     try {
-      await new Client({ name: 'orin', version: '1.0.0' }).connect(transport);
-    } catch (error) {
-      if (!(error instanceof UnauthorizedError) || !provider.pendingUrl) throw error;
-      this.setStatus(id, { state: 'authorizing' });
-      await this.openExternal(provider.pendingUrl.toString());
-      await transport.finishAuth(await code);
+      try {
+        await client.connect(transport);
+      } catch (error) {
+        if (!(error instanceof UnauthorizedError) || !provider.pendingUrl) throw error;
+        this.setStatus(id, { state: 'authorizing' });
+        await this.openExternal(provider.pendingUrl.toString());
+        await transport.finishAuth(await code);
+      }
+    } finally {
+      clearTimeout(timeout);
+      listener?.close();
+      await client.close().catch(() => {});
     }
     return this.connect(id);
   }

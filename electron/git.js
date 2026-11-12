@@ -4,9 +4,11 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
+// core.fsmonitor in a repository's own .git/config is a command that git runs on status and add, so a folder from a zip
+// could run code when the side panel opens. Orin turns it off for its own calls.
 function git(cwd, args, { env, input, timeout = 15000 } = {}) {
   return new Promise((resolve, reject) => {
-    const child = execFile('git', args, { cwd, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024, timeout, env: env && { ...process.env, ...env } }, (error, stdout, stderr) => {
+    const child = execFile('git', ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', ...args], { cwd, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024, timeout, env: env && { ...process.env, ...env } }, (error, stdout, stderr) => {
       if (error) reject(new Error((stderr || stdout || error.message).trim()));
       else resolve(stdout);
     });
@@ -64,7 +66,7 @@ async function inside(cwd, file) {
 async function diff(cwd, file, { staged, untracked }) {
   const { top, full } = await inside(cwd, file);
   if (untracked) return '+' + (await fs.readFile(full, 'utf8')).slice(0, 200000).replace(/\n/g, '\n+');
-  return (await git(top, ['diff', ...(staged ? ['--cached'] : []), '--', file])).slice(0, 200000);
+  return (await git(top, ['diff', '--no-ext-diff', '--no-textconv', ...(staged ? ['--cached'] : []), '--', file])).slice(0, 200000);
 }
 
 async function stage(cwd, file, unstage) {
@@ -110,12 +112,31 @@ const pull = async cwd => git(await root(cwd), ['pull', '--ff-only'], NETWORK);
 // Git keeps unreferenced trees for at least two weeks (gc.pruneExpire), so older checkpoints can be gone.
 async function withIndex(top, fn) {
   const index = path.join(os.tmpdir(), `orin-index-${crypto.randomUUID()}`);
-  try { return await fn({ GIT_INDEX_FILE: index }); } finally { await fs.rm(index, { force: true }); }
+  try {
+    const config = await git(top, ['config', '--name-only', '--get-regexp', '^filter\\..*\\.(clean|smudge|process|required)$']).catch(() => '');
+    const names = [...new Set(config.trim().split('\n').filter(Boolean).map(k => k.slice(0, k.lastIndexOf('.'))))];
+    const env = { GIT_INDEX_FILE: index, GIT_CONFIG_COUNT: String(names.length * 4) };
+    let i = 0;
+    for (const name of names) for (const field of ['clean', 'smudge', 'process', 'required']) {
+      env[`GIT_CONFIG_KEY_${i}`] = `${name}.${field}`;
+      env[`GIT_CONFIG_VALUE_${i++}`] = field === 'required' ? 'false' : '';
+    }
+    return await fn(env);
+  } finally { await fs.rm(index, { force: true }); }
 }
 
 async function snapshot(cwd) {
   const top = await root(cwd);
   const scope = path.relative(top, await fs.realpath(cwd)) || '.';
+  const candidates = (await git(top, ['ls-files', '-c', '-o', '--exclude-standard', '-z'])).split('\0').filter(Boolean);
+  let total = 0;
+  for (const file of new Set(candidates)) {
+    const stat = await fs.lstat(path.join(top, file)).catch(() => null);
+    if (stat?.isFile()) {
+      total += stat.size;
+      if (stat.size > 25 * 1024 * 1024 || total > 100 * 1024 * 1024) throw new Error('Workspace files are too large for an automatic checkpoint.');
+    }
+  }
   const tree = await withIndex(top, async env => {
     // Starting from a copy of the real index lets git reuse its file stat cache. The copy keeps the index's own
     // modification time: git rechecks files changed in the same second as the index only by comparing it to that time.

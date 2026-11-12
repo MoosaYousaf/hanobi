@@ -24,6 +24,7 @@ async function run({ thread, history, attachments, apiKey, system, tools, callTo
   let jsonRetries = 0;
 
   for (let step = 0; step < MAX_STEPS; step++) {
+    const before = structuredClone(draft.parts);
     const stream = api.beta.messages.stream({
       model: thread.model,
       max_tokens: 64000,
@@ -45,6 +46,7 @@ async function run({ thread, history, attachments, apiKey, system, tools, callTo
     catch (error) {
       // An unparseable streamed tool input is retried; API errors are not.
       if (error instanceof APIError || signal.aborted || jsonRetries++ >= 2) throw error;
+      draft.parts = before; draft.version++;
       continue;
     }
     const u = message.usage || {};

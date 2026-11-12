@@ -177,22 +177,27 @@ export function start() {
 }
 
 export async function answerApproval(id, decision) {
-  set(s => ({ approvals: s.approvals.filter(a => a.id !== id) }));
   await call('run:approve', id, decision);
+  set(s => ({ approvals: s.approvals.filter(a => a.id !== id) }));
 }
 
 export async function answerQuestion(id, answers) {
-  set(s => ({ approvals: s.approvals.filter(a => a.id !== id) }));
   await call('run:answer', id, answers);
+  set(s => ({ approvals: s.approvals.filter(a => a.id !== id) }));
 }
 
 // In-app dialogs. Electron has no window.prompt, and the native confirm sheet does not match the app.
 // askText resolves to the text or null; askConfirm resolves to true or false.
-export const askText = (title, value = '') => new Promise(resolve => set({ dialog: { kind: 'text', title, value, resolve } }));
-export const askConfirm = ({ title, message = '', confirmLabel = 'OK', danger = false }) => new Promise(resolve => set({ dialog: { kind: 'confirm', title, message, confirmLabel, danger, resolve } }));
+const dialogQueue = [];
+function enqueueDialog(options) { return new Promise(resolve => {
+  const dialog = { ...options, resolve };
+  if (state.dialog) dialogQueue.push(dialog); else set({ dialog });
+}); }
+export const askText = (title, value = '') => enqueueDialog({ kind: 'text', title, value });
+export const askConfirm = ({ title, message = '', confirmLabel = 'OK', danger = false }) => enqueueDialog({ kind: 'confirm', title, message, confirmLabel, danger });
 export function closeDialog(result) {
   state.dialog?.resolve(result);
-  set({ dialog: null });
+  set({ dialog: dialogQueue.shift() || null });
 }
 
 export async function deleteThread(thread) {

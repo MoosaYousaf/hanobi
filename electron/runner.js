@@ -60,6 +60,7 @@ class Runner {
   constructor({ store, secrets, mcp, send, files, limits, catalog, local }) {
     Object.assign(this, { store, secrets, mcp, send, files, limits, catalog, local });
     this.runs = new Map(); // threadId -> { controller, draft }
+    this.helpers = new Set();
     this.approvals = new Map(); // approvalId -> resolve
   }
 
@@ -127,12 +128,12 @@ class Runner {
     if (this.runs.has(threadId)) throw new Error('Wait for the current reply to finish.');
     const connectionId = next.connectionId ?? thread.connectionId;
     const { connection, preset } = this.resolve(connectionId);
-    const mode = mapMode(next.mode ?? thread.baseMode ?? thread.mode, preset);
+    const mode = mapMode(next.mode ?? thread.baseMode ?? thread.mode, preset, 'mode' in next ? preset : { kind: thread.baseKind || this.resolve(thread.connectionId).preset.kind });
     const effort = preset.efforts.includes(next.effort ?? thread.effort) ? (next.effort ?? thread.effort) : '';
     const settings = validateSettings(connection, { model: next.model ?? thread.model, effort, mode }, this.models(connectionId));
     const switched = connectionId !== thread.connectionId;
     const overseerOn = 'overseer' in next ? !!next.overseer : 'model' in next || 'connectionId' in next ? false : !!thread.overseer;
-    this.store.update(threadId, { connectionId, ...settings, baseMode: 'mode' in next ? settings.mode : thread.baseMode ?? settings.mode, overseer: overseerOn,
+    this.store.update(threadId, { connectionId, ...settings, baseMode: 'mode' in next ? settings.mode : thread.baseMode ?? thread.mode, baseKind: 'mode' in next ? preset.kind : thread.baseKind || this.resolve(thread.connectionId).preset.kind, overseer: overseerOn,
       ...(overseerOn !== !!thread.overseer ? { route: null } : {}), ...(switched ? { sessionId: null, replay: thread.messages.length > 0 } : {}) });
     this.store.data.preferences.lastModel = { connectionId, ...settings, overseer: overseerOn };
     return this.store.thread(threadId);
@@ -151,21 +152,21 @@ class Runner {
     const list = this.overseerCandidates();
     if (!list.length) return null;
     const router = this.connections().find(c => c.id === overseer.ROUTER.connectionId && c.ready);
-    const complete = router ? (prompt, routerSignal) => cli.complete({ preset: presets[router.preset], model: overseer.ROUTER.model, prompt, signal: routerSignal }) : null;
+    const complete = router ? (prompt, routerSignal) => cli.complete({ preset: presets[router.preset], model: 'haiku', prompt, signal: routerSignal }) : null;
     const route = await overseer.decide({ text, workspaceKind: workspace.kind, files, previous: thread.route, list, prefs, signal, complete,
       readLimits: name => (this.limits?.supports(name) ? this.limits.get(name) : Promise.resolve(null)) });
     if (!route) return null;
     const { connection, preset } = this.resolve(route.connectionId);
     const switched = route.connectionId !== thread.connectionId;
-    const settings = validateSettings(connection, { model: route.model, effort: preset.efforts.includes(route.effort) ? route.effort : '', mode: mapMode(thread.baseMode ?? thread.mode, preset) }, this.models(route.connectionId));
-    this.store.update(threadId, { connectionId: route.connectionId, ...settings, route, ...(switched ? { sessionId: null, replay: history.length > 0 } : {}) });
+    const settings = validateSettings(connection, { model: route.model, effort: preset.efforts.includes(route.effort) ? route.effort : '', mode: mapMode(thread.baseMode ?? thread.mode, preset, { kind: thread.baseKind || this.resolve(thread.connectionId).preset.kind }) }, this.models(route.connectionId));
+    this.store.update(threadId, { baseMode: thread.baseMode ?? thread.mode, baseKind: thread.baseKind || this.resolve(thread.connectionId).preset.kind, connectionId: route.connectionId, ...settings, route, ...(switched ? { sessionId: null, replay: history.length > 0 } : {}) });
     this.send('thread-changed', { threadId });
     this.send('changed');
     return route;
   }
 
   // Validation throws synchronously so the caller sees it; the run itself continues in the background.
-  start(threadId, { text, images = [], files = [] }) {
+  start(threadId, { text, images = [], files = [], editMessageId }) {
     text = String(text || '').trim();
     if (!text && !images.length && !files.length) throw new Error('Write a message first.');
     // Attachments must already be copied into this thread's folder (files:attach).
@@ -185,6 +186,11 @@ class Runner {
     // @path mentions of workspace files go with the message like attachments, read where they are.
     for (const part of commands.mentions(text, workspace.path)) if (!attached.some(p => p.path === part.path)) attached.push(part);
 
+    if (editMessageId) {
+      const index = thread.messages.findIndex(m => m.id === editMessageId && m.role === 'user');
+      if (index < 0) throw new Error('Message not found.');
+      this.store.update(threadId, { messages: thread.messages.slice(0, index), sessionId: null, replay: index > 0 });
+    }
     const history = thread.messages.slice();
     const user = this.store.append(threadId, { role: 'user', parts: [...images.map(i => ({ type: 'image', mediaType: i.mediaType, data: i.data, name: i.name })), ...attached, ...(text ? [{ type: 'text', text }] : [])] });
     const draft = new Draft();
@@ -229,10 +235,8 @@ class Runner {
       // CLI agents get this message's attachment text and paths in the prompt; API models get every attachment through the transcript.
       const attachments = this.files ? await this.files.promptTexts(preset.kind === 'cli' ? [{ parts: attached }] : messages) : new Map();
       let result, saved;
-      // Claude Code's suggestion can arrive after the reply is saved; it goes first in the list.
-      const onSuggestion = suggestion => { if (saved) this.addSuggestions(threadId, saved.id, [suggestion], true); else draft.suggestions = [...new Set([...draft.suggestions, suggestion])]; };
       if (preset.kind === 'cli') {
-        result = await cli.run({ ...common, preset, history, prompt: [attachmentBlock(attached, attachments, { paths: true }), text].filter(Boolean).join('\n\n'), cwd: workspace.path, mcpServers: this.mcp.enabledConfigs(), onSuggestion,
+        result = await cli.run({ ...common, preset, history, prompt: [attachmentBlock(attached, attachments, { paths: true }), text].filter(Boolean).join('\n\n'), cwd: workspace.path, mcpServers: this.mcp.enabledConfigs(),
           onSession: id => { if (id !== thread.sessionId) this.store.update(threadId, { sessionId: id, replay: false }); },
           approve: request => this.ask(threadId, { server: preset.name, ...request }),
           question: request => this.question(threadId, { server: preset.name, ...request }) });
@@ -250,9 +254,9 @@ class Runner {
       }
       const stopped = controller.signal.aborted;
       saved = finish(stopped && !draft.parts.length ? null : { parts: draft.final(), native: result?.native, ...(stopped ? { stopped: true } : {}) });
-      // Claude Code makes one suggestion of its own. With the setting on, every model makes up to three with one extra request.
+      // Optional short helper requests provide up to three suggestions.
       // Suggestions from a local model would load it again and take minutes on a small Mac, so they are skipped.
-      if (saved && !stopped && !saved.error && connection.id !== LOCAL_ID && this.store.data.preferences.suggestReplies) this.suggestReplies(threadId, connection, preset, saved).catch(() => {});
+      if (saved && !stopped && !saved.error && connection.id !== LOCAL_ID && preset.cli !== 'copilot' && this.store.data.preferences.suggestReplies) this.suggestReplies(threadId, connection, preset, saved).catch(() => {});
     } catch (error) {
       // A user stop is not a failure: keep whatever arrived and mark it stopped.
       if (controller.signal.aborted) finish(draft.parts.length ? { parts: draft.final(), stopped: true } : null);
@@ -263,17 +267,21 @@ class Runner {
   async suggestReplies(threadId, connection, preset, reply) {
     const thread = this.store.thread(threadId);
     const user = thread.messages.findLast(m => m.role === 'user');
-    const request = { apiKey: this.secrets.get(`key:${connection.id}`), model: suggest.model(preset, thread.model), prompt: suggest.prompt(user, reply), signal: AbortSignal.timeout(preset.kind === 'cli' ? 90000 : 30000) };
-    const text = preset.kind === 'cli' ? await cli.complete({ preset, ...request })
+    const controller = new AbortController();
+    this.helpers.add(controller);
+    const request = { apiKey: this.secrets.get(`key:${connection.id}`), model: suggest.model(preset, thread.model), prompt: suggest.prompt(user, reply), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(preset.kind === 'cli' ? 90000 : 30000)]) };
+    try {
+      const text = preset.kind === 'cli' ? await cli.complete({ preset, ...request })
       : preset.kind === 'anthropic' ? await anthropic.complete(request) : await openai.complete({ ...request, baseURL: connection.baseURL || preset.baseURL });
-    this.addSuggestions(threadId, reply.id, suggest.parse(text));
+      this.addSuggestions(threadId, reply.id, suggest.parse(text));
+    } finally { this.helpers.delete(controller); }
   }
-  // Suggestions only matter on the latest reply. Claude Code's own suggestion stays first.
+  // Suggestions only matter on the latest reply.
   addSuggestions(threadId, replyId, list, first = false) {
     const reply = this.store.thread(threadId).messages.at(-1);
     if (!list.length || reply?.id !== replyId) return;
     const own = reply.suggestions || [];
-    const suggestions = [...new Set(first ? [...list, ...own] : [...own, ...list])].slice(0, suggest.MAX + 1);
+    const suggestions = [...new Set(first ? [...list, ...own] : [...own, ...list])].slice(0, suggest.MAX);
     this.store.patchMessage(threadId, replyId, { suggestions });
     this.send('thread-changed', { threadId });
   }
@@ -294,13 +302,22 @@ class Runner {
     if (conversation) this.store.update(threadId, { messages: thread.messages.slice(0, index), sessionId: null, replay: index > 0 });
     return { text: message.parts.filter(p => p.type === 'text').map(p => p.text).join('\n\n'), files };
   }
-  stop(threadId) { this.runs.get(threadId)?.controller.abort(); }
-  stopAll() { for (const run of this.runs.values()) run.controller.abort(); }
+  stop(threadId) {
+    this.runs.get(threadId)?.controller.abort();
+    for (const [id, entry] of this.approvals) if (entry.threadId === threadId) this.answer(id, null);
+  }
+  stopAll() {
+    for (const id of this.runs.keys()) this.stop(id);
+    for (const controller of this.helpers) controller.abort();
+    cli.closeAll();
+  }
 
   // Each MCP call asks the user first unless the thread allows all tools.
   toolCaller(threadId, tools, draft) {
     const byName = new Map(tools.map(t => [t.qualified, t]));
+    const signal = this.runs.get(threadId)?.controller.signal;
     return async (callId, name, input) => {
+      signal?.throwIfAborted();
       const tool = byName.get(name);
       if (tool === ASK_TOOL) {
         draft.setStatus(callId, 'pending');
@@ -326,6 +343,7 @@ class Runner {
         if (decision === 'deny') { const result = { output: 'The user declined this tool call.', isError: true }; draft.toolResult(callId, { ...result, status: 'denied' }); return result; }
         draft.setStatus(callId, 'running');
       }
+      signal?.throwIfAborted();
       try { const result = await this.mcp.call(tool, input); draft.toolResult(callId, result); return result; }
       catch (error) { const result = { output: error.message, isError: true }; draft.toolResult(callId, result); return result; }
     };
@@ -333,6 +351,8 @@ class Runner {
   // One approval flow for MCP calls and CLI permission prompts. A tool the user always allowed in this thread passes at once.
   // Returns { decision, cancel }; cancel denies and removes the request, for example when the CLI withdraws it.
   ask(threadId, { name, ...request }) {
+    if (this.runs.get(threadId)?.controller.signal.aborted) return { decision: Promise.resolve('deny'), cancel() {} };
+    name = `${this.store.thread(threadId).connectionId}:${request.server || ''}:${name}`;
     if ((this.store.thread(threadId).allowedTools || []).includes(name)) return { decision: Promise.resolve('allow'), cancel() {} };
     const id = crypto.randomUUID();
     const decision = new Promise(resolve => {
@@ -348,6 +368,7 @@ class Runner {
   // Questions from the model: Claude Code's AskUserQuestion, Codex user input requests, and the ask_user tool of API runs.
   // Resolves to { [question id]: [answer, …] }, or null when the user skips or the run ends.
   question(threadId, { questions, ...request }) {
+    if (this.runs.get(threadId)?.controller.signal.aborted) return { decision: Promise.resolve(null), cancel() {} };
     questions = normalizeQuestions(questions);
     const id = crypto.randomUUID();
     const decision = new Promise(resolve => {
@@ -369,7 +390,8 @@ class Runner {
 }
 
 // The closest access mode a provider has to the one the user chose. CLIs and API models have different modes.
-function mapMode(mode, preset) {
+function mapMode(mode, preset, previous = preset) {
+  if (previous.kind !== 'cli' && preset.kind === 'cli' && mode === 'full') mode = 'ask';
   const available = modesFor(preset);
   if (available.some(m => m.id === mode)) return mode;
   if (mode === 'full' && available.some(m => m.id === 'full')) return 'full';

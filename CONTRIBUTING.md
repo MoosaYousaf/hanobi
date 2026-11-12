@@ -15,7 +15,7 @@ Thank you for your help. This file tells you how to set up, change, and test Ori
 
 3. Start the app with `npm start`.
 
-Orin runs on macOS 12 and later. Electron is pinned to 40.3.0 because later versions do not support macOS 12. Do not update Electron.
+Orin runs on macOS 12 and later. Electron is pinned to 43.8.9 within the 43.x series for macOS 12 support. Security patches within 43.x are allowed after testing on macOS 12; do not move to a newer major version without changing the supported OS policy.
 
 ## Read first
 

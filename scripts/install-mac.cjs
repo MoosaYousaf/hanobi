@@ -8,6 +8,20 @@ const run = (cmd, args, options = {}) => execFileSync(cmd, args, { stdio: 'inher
 const root = path.join(__dirname, '..');
 const target = process.env.ORIN_INSTALL_DIR || '/Applications';
 
+// Replacing a running app can interrupt an active model session. Leave it open and refuse the install.
+// Hanobi is Orin's old name; it must also be closed before its data can migrate safely.
+const names = ['Orin', 'Hanobi'];
+const running = () => {
+  const commands = execFileSync('ps', ['-axo', 'comm'], { encoding: 'utf8' }).split('\n').map(s => s.trim());
+  return names.find(name => commands.some(command => command.endsWith(`/${name}.app/Contents/MacOS/${name}`)));
+};
+const assertStopped = () => {
+  const active = running();
+  if (active) throw new Error(`${active} is running. Finish your session and quit it when ready, then run this again. Nothing was closed or replaced.`);
+};
+assertStopped();
+
+
 run('npm', ['run', 'build'], { cwd: root });
 run('npx', ['electron-builder', '--mac', 'dir', '--publish', 'never'], { cwd: root });
 const out = path.join(root, 'dist/release');
@@ -15,13 +29,8 @@ const folder = fs.readdirSync(out).find(d => /^mac/.test(d) && fs.existsSync(pat
 if (!folder) throw new Error('The build made no Orin.app.');
 const built = path.join(out, folder, 'Orin.app');
 
-// Quit a running copy first, so its data is saved and the files can be replaced. Hanobi is Orin's old name: it must be
-// closed too, so that Orin can move its data folder at the first start.
-const names = ['Orin', 'Hanobi'];
-for (const name of names) try { execFileSync('osascript', ['-e', `if application "${name}" is running then tell application "${name}" to quit`]); } catch {}
-const running = () => names.find(name => { try { execFileSync('pgrep', ['-x', name], { stdio: 'ignore' }); return true; } catch { return false; } });
-for (let i = 0; i < 50 && running(); i++) execFileSync('sleep', ['0.2']);
-if (running()) throw new Error(`${running()} is still running. Quit it, then run this again.`);
+// Check again in case the app was opened while the build ran.
+assertStopped();
 
 const installed = path.join(target, 'Orin.app');
 fs.rmSync(installed, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 // Suggested replies: short messages the user could send next, shown under the latest reply.
-// Claude Code makes its own (--prompt-suggestions). API and local models get one extra request when the user turns it on.
+// Supported providers get one short helper request when the user turns suggestions on.
 const MAX = 3;
 
 const lastText = message => (message?.parts || []).filter(p => p.type === 'text').map(p => p.text).join('\n\n');

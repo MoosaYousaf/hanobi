@@ -31,6 +31,7 @@ function server({ cut = false, badHash = false } = {}) {
       const start = range ? Number(range[1]) : 0;
       res.statusCode = range ? 206 : 200;
       const chunk = body.subarray(start);
+      if (range) res.setHeader('Content-Range', `bytes ${start}-${body.length - 1}/${body.length}`);
       if (cutOnce && !range) { cutOnce = false; res.setHeader('Content-Length', chunk.length); res.write(chunk.subarray(0, 100000)); return setTimeout(() => res.destroy(), 50); }
       return res.end(chunk);
     }

@@ -42,7 +42,7 @@ export function ProjectView({ projectId }) {
           </div>
           <section className="project-section">
             <h3>Instructions</h3>
-            <textarea className="system-prompt" rows={5} value={instructions} onChange={e => setInstructions(e.target.value)} onBlur={save}
+            <textarea className="system-prompt" rows={5} value={instructions} onChange={e => { setInstructions(e.target.value); guard(() => call('project:update', projectId, { instructions: e.target.value }))(); }} onBlur={save}
               placeholder="What every chat in this project should know. For example: You review contracts for a small design studio. Answer in plain language." />
           </section>
           <section className="project-section">

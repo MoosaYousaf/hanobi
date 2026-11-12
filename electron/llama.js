@@ -4,6 +4,8 @@
 // macOS 14 or an Apple Silicon Mac. A build needs the Xcode Command Line Tools and CMake. The tag is pinned to a
 // release that was built and run here; moving it is a code change.
 const fs = require('node:fs');
+const crypto = require('node:crypto');
+const { pipeline } = require('node:stream/promises');
 const fsp = require('node:fs/promises');
 const os = require('node:os');
 const net = require('node:net');
@@ -12,7 +14,9 @@ const { spawn, execFile } = require('node:child_process');
 const { Readable } = require('node:stream');
 
 const TAG = 'b12233';
-const SOURCE = tag => `https://github.com/ggml-org/llama.cpp/archive/refs/tags/${encodeURIComponent(tag)}.tar.gz`;
+const COMMIT = '5f490d7bfe78844e6390c869454c149fd7e003a8';
+const SHA256 = '2465457fd509247f0a6de4345172063aeed9594d2e214937d6bad997bafce6a6';
+const SOURCE = () => `https://codeload.github.com/ggml-org/llama.cpp/tar.gz/${COMMIT}`;
 const IDLE_MS = 10 * 60 * 1000;
 const LOAD_MS = 3 * 60 * 1000;
 const GB = 1e9;
@@ -42,8 +46,10 @@ function toolPath(name, dirs = [], { exists = fs.existsSync } = {}) {
 }
 
 class Engine {
-  constructor({ dir, library, fetch = globalThis.fetch, onChange = () => {}, which = () => null, memory = os.totalmem(), tag = TAG, source = SOURCE, release = os.release(), idleMs = IDLE_MS }) {
-    Object.assign(this, { dir, library, fetch, onChange, which, memory, tag, source, release, idleMs });
+  constructor({ dir, library, fetch = globalThis.fetch, onChange = () => {}, which = () => null, memory = os.totalmem(), tag = TAG, source = SOURCE, release = os.release(), idleMs = IDLE_MS, sha256 = SHA256 }) {
+    Object.assign(this, { dir, library, fetch, onChange, which, memory, tag, source, release, idleMs, sha256 });
+    this.startQueue = Promise.resolve();
+    this.closed = false;
     this.install = null; // { step, progress, error? } while building or after a failure
     this.server = null; // { modelId, child, port, ready, log, starting, exited }
     this.busy = 0;
@@ -69,6 +75,8 @@ class Engine {
   async installEngine() {
     if (this.install && !this.install.error) return;
     const cmake = this.which('cmake'), compiler = this.which('c++') || this.which('clang++');
+    this.installController = new AbortController();
+    const signal = this.installController.signal;
     this.install = { step: 'Checking the build tools', progress: null };
     this.emit();
     const work = path.join(this.dir, 'build');
@@ -81,7 +89,8 @@ class Engine {
       await fsp.mkdir(src);
       this.setInstall({ step: `Downloading llama.cpp ${this.tag}`, progress: 0 });
       await this.save(this.source(this.tag), path.join(work, 'src.tar.gz'));
-      await run('tar', ['-xzf', path.join(work, 'src.tar.gz'), '-C', src, '--strip-components', '1']);
+      signal.throwIfAborted();
+      await run('tar', ['-xzf', path.join(work, 'src.tar.gz'), '-C', src, '--strip-components', '1'], { signal });
       const ninja = this.which('ninja');
       const build = path.join(work, 'out');
       this.setInstall({ step: 'Building the engine for this Mac (10 to 40 minutes)', progress: 0 });
@@ -92,6 +101,7 @@ class Engine {
       await this.spawn(cmake, ['--build', build, '--target', 'llama-server', '-j', String(await physicalCores())], work);
       const built = path.join(build, 'bin', 'llama-server');
       await run(built, ['--version']).catch(error => { throw new Error(`The engine was built but does not run: ${String(error.stderr || error.message).trim().split('\n').pop()}`); });
+      signal.throwIfAborted();
       await this.stop();
       await fsp.copyFile(built, `${this.binary()}.new`);
       await fsp.chmod(`${this.binary()}.new`, 0o755);
@@ -107,26 +117,33 @@ class Engine {
       this.emit();
     }
   }
-  cancelInstall() { this.install?.child?.kill('SIGTERM'); }
+  cancelInstall() { this.installController?.abort(); this.install?.child?.kill('SIGTERM'); }
   async save(url, file) {
-    const response = await this.fetch(url, { headers: { 'User-Agent': 'Orin' }, signal: AbortSignal.timeout(10 * 60 * 1000) });
+    const signal = AbortSignal.any([this.installController.signal, AbortSignal.timeout(10 * 60 * 1000)]);
+    const response = await this.fetch(url, { headers: { 'User-Agent': 'Orin' }, signal });
     if (!response.ok) throw new Error(`The download failed (HTTP ${response.status}).`);
     const total = Number(response.headers.get('content-length')) || 0;
-    const out = fs.createWriteStream(file);
-    let received = 0, shown = 0;
-    try {
-      for await (const chunk of Readable.fromWeb(response.body)) {
-        if (!out.write(chunk)) await new Promise(r => out.once('drain', r));
+    const hash = crypto.createHash('sha256');
+    let received = 0;
+    const self = this;
+    async function* checked(source) {
+      for await (const chunk of source) {
         received += chunk.length;
-        if (total && Date.now() - shown > 250) { shown = Date.now(); this.setInstall({ progress: received / total }); }
+        if (received > 128 * 1024 * 1024) throw new Error('Engine source exceeds 128 MB.');
+        hash.update(chunk);
+        if (total) self.setInstall({ progress: received / total });
+        yield chunk;
       }
-    } finally { await new Promise(r => out.end(r)); }
+    }
+    await pipeline(Readable.fromWeb(response.body), checked, fs.createWriteStream(file), { signal });
+    if (hash.digest('hex') !== this.sha256) throw new Error('The engine source failed its SHA-256 check.');
   }
+
   spawn(file, args, cwd) {
     return new Promise((resolve, reject) => {
       // Tools found outside the system folders (Homebrew) need their own folder on the path.
       const env = { ...process.env, PATH: [...new Set([path.dirname(file), '/usr/bin', '/bin', '/usr/sbin', '/sbin', ...(process.env.PATH || '').split(':')])].join(':') };
-      const child = spawn(file, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(file, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], signal: this.installController.signal });
       this.install.child = child;
       let tail = '';
       const read = chunk => {
@@ -163,11 +180,23 @@ class Engine {
   }
   done() { this.busy = Math.max(0, this.busy - 1); this.lastUse = Date.now(); }
 
-  async start(modelId, file) {
+  start(modelId, file) {
+    const pending = this.startQueue.then(async () => {
+      if (this.closed) throw new Error('The local engine is closed.');
+      if (this.server?.modelId === modelId) return;
+      if (this.server && this.busy > 1) throw new Error('Wait for the current local model reply before switching models.');
+      await this.startServer(modelId, file);
+    });
+    this.startQueue = pending.catch(() => {});
+    return pending;
+  }
+  async startServer(modelId, file) {
     await this.stop();
     const port = await freePort();
+    if (this.closed) throw new Error('The local engine is closed.');
     // One slot: with several, llama-server splits the context between them.
     const args = ['--model', file, '--host', '127.0.0.1', '--port', String(port), '--alias', modelId, '--ctx-size', String(contextFor(this.memory)), '--threads', String(await physicalCores()), '--parallel', '1', '--jinja', '--no-webui'];
+    if (this.closed) throw new Error('The local engine is closed.');
     const child = spawn(this.binary(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
     const server = { modelId, child, port, ready: false, log: '' };
     child.stderr.on('data', chunk => { server.log = (server.log + chunk).slice(-4000); });
@@ -199,7 +228,7 @@ class Engine {
     clearTimeout(timer);
     this.emit();
   }
-  close() { clearInterval(this.timer); this.server?.child.kill('SIGTERM'); this.install?.child?.kill('SIGTERM'); }
+  close() { this.closed = true; clearInterval(this.timer); this.server?.child.kill('SIGTERM'); this.cancelInstall(); }
 }
 
 module.exports = { Engine, toolPath, TAG, contextFor, deploymentTarget, buildProgress };

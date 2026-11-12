@@ -94,6 +94,7 @@ async function press(win, selector, text) {
 }
 async function shot(win, name) {
   if (!process.env.SMOKE_SHOTS) return;
+  fs.mkdirSync(process.env.SMOKE_SHOTS, { recursive: true });
   for (const theme of ['light', 'dark']) {
     nativeTheme.themeSource = theme;
     await sleep(500); // theme-dependent drawings (Mermaid) redraw after a short delay
@@ -131,6 +132,11 @@ app.whenReady().then(async () => {
     await win.webContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
     await win.webContents.executeJavaScript(`document.querySelector('.usage-card').style.display = ''`);
     await until(win, `!!document.querySelector('.composer-wrap > .suggestions .suggestion')`, 'suggestions show as chips above the message box');
+    await until(win, `(() => { const row = document.querySelector('.suggestions'); const chips = [...row.children]; return chips.length <= 3 && chips.every(c => c.getBoundingClientRect().top === chips[0].getBoundingClientRect().top); })()`, 'suggestions stay on one line and never exceed three');
+    await win.webContents.executeJavaScript(`document.querySelector('.suggestions').style.width = '240px'`);
+    await until(win, `(() => { const row = document.querySelector('.suggestions'); const visible = [...row.children].filter(c => getComputedStyle(c).visibility === 'visible'); return visible.length === 1 && visible.every(c => c.getBoundingClientRect().right <= row.getBoundingClientRect().right + 1) && [...row.children].filter(c => c.inert).length === 1; })()`, 'narrow panes hide overflowing suggestion chips');
+    await win.webContents.executeJavaScript(`document.querySelector('.suggestions').style.width = ''`);
+    await until(win, `[...document.querySelectorAll('.suggestion')].every(c => getComputedStyle(c).visibility === 'visible' && !c.inert)`, 'suggestions return when the pane widens');
     await clickText(win, '.suggestion', 'Show the migration steps');
     await until(win, `document.querySelector('.composer textarea, textarea').value === 'Show the migration steps'`, 'a suggestion fills the composer');
     await win.webContents.executeJavaScript(`(() => { const t = document.querySelector('.composer textarea, textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, ''); t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
@@ -221,7 +227,31 @@ app.whenReady().then(async () => {
     await until(runWin, `document.getElementById('out')?.textContent === 'ran undefined undefined'`, 'the snippet script runs without require or the Orin bridge');
     const permission = await Promise.race([runWin.webContents.executeJavaScript(`navigator.permissions.query({ name: 'geolocation' }).then(p => p.state)`), sleep(3000).then(() => 'timeout')]);
     if (permission !== 'denied') throw new Error(`Run window permissions are not denied: ${permission}`);
+    // Model-written HTML cannot contact loopback services or launch browser windows.
+    const reached = await runWin.webContents.executeJavaScript(`fetch(${JSON.stringify(process.env.ORIN_HF_BASE + '/blocked-probe')}, { mode: 'no-cors' }).then(() => true, () => false)`);
+    if (reached) throw new Error('Run window reached a loopback service');
+    const { shell } = require('electron');
+    const external = shell.openExternal; let launches = 0;
+    shell.openExternal = async () => { launches++; };
+    try {
+      await runWin.webContents.executeJavaScript(`window.open('https://example.com/blocked-probe'); location.href = 'https://example.com/blocked-probe'`);
+      await sleep(100);
+      if (launches) throw new Error('Run window launched the external browser');
+    } finally { shell.openExternal = external; }
     runWin.destroy();
+    // PDF export must not fetch remote images or embed local file text.
+    const http = require('node:http'); let printRequests = 0;
+    const printProbe = http.createServer((_req, res) => { printRequests++; res.end('blocked'); });
+    await new Promise(resolve => printProbe.listen(0, '127.0.0.1', resolve));
+    const secret = path.join(ghBin, 'private.txt');
+    fs.writeFileSync(secret, 'ORIN_PRIVATE_PRINT_SENTINEL');
+    saveTarget = path.join(ghBin, 'isolated.pdf');
+    try {
+      const html = `<h1>Public PDF</h1><img src="http://127.0.0.1:${printProbe.address().port}/beacon"><iframe src="${require('node:url').pathToFileURL(secret).href}" width="600" height="400"></iframe>`;
+      await win.webContents.executeJavaScript(`window.orin.invoke('files:export', ${JSON.stringify({ name: 'isolated.pdf', html })})`);
+      const printed = await require('../electron/extract').extractText(saveTarget);
+      if (!printed.includes('Public PDF') || printed.includes('ORIN_PRIVATE_PRINT_SENTINEL') || printRequests) throw new Error('PDF printer isolation failed');
+    } finally { printProbe.close(); }
     for (const extension of ['pdf', 'docx']) {
       saveTarget = path.join(ghBin, `reply.${extension}`);
       await click(win, '.msg.assistant .msg-actions [data-tip="Download"]');
@@ -402,6 +432,23 @@ app.whenReady().then(async () => {
     await until(win, `/\\[orin\\]/.test(document.querySelector('.xterm-rows')?.textContent || '')`, 'the header button opens the Terminal page and attaches again', 15000);
     await until(win, `(document.querySelector('.xterm-rows')?.textContent || '').includes('echo orin-smoke-input')`, 'the tmux session kept its screen');
     if (errors.length) throw new Error('Console errors:\n' + errors.join('\n'));
+    // Workspace removal must wait for attachment cleanup before confirming success.
+    const fsp = require('node:fs/promises');
+    const removeFiles = fsp.rm;
+    fsp.rm = async (target, options) => {
+      if (String(target).includes(`${path.sep}Files${path.sep}`)) await sleep(100);
+      return removeFiles(target, options);
+    };
+    try {
+      const removedThread = await win.webContents.executeJavaScript(`(async () => {
+        const workspace = await window.orin.invoke('project:create', 'Deletion probe');
+        const thread = await window.orin.invoke('thread:new', workspace.id, { connectionId: 'claude-code', model: '', effort: '', mode: 'ask' });
+        await window.orin.invoke('files:attach-data', thread.id, { name: 'private.txt', data: btoa('private attachment') });
+        await window.orin.invoke('workspace:remove', workspace.id);
+        return thread.id;
+      })()`);
+      if (fs.existsSync(path.join(process.env.ORIN_USER_DATA, 'Files', removedThread))) throw new Error('Workspace deletion returned before private attachments were removed');
+    } finally { fsp.rm = removeFiles; }
     process.stdout.write('Smoke passed: home, ghost-text suggestion, inline completion, suggestion chips, / commands, @ file mentions, saved messages, live reply with approval, elapsed time and background work, themed access and effort pickers, new conversation, model picker, settings, connector connect and disconnect, Overseer, local models (search, files, download, delete), connector presets, dark and light themes, rewind, suggested replies, questions, chat and projects, split panes, thread menu, delete dialog, focus mode, usage ring, drag to reorder, branches and pull requests, code snippet bar, copy, preview, Mermaid diagrams, and isolated Run, message edit, file cards, reply export to PDF and Word, desktop settings, voice input with live words, plan usage limits, tab memory, Terminal (tmux).\n');
     stopTmux();
     app.exit(0);

@@ -1,0 +1,10 @@
+const { spawn, execFileSync } = require('node:child_process');
+execFileSync(process.execPath, ['scripts/build-speech.cjs'], { stdio: 'inherit' });
+const watch = spawn(process.execPath, [require('node:path').join(require('node:path').dirname(require.resolve('vite/package.json')), 'bin/vite.js'), 'build', '--watch'], { stdio: 'inherit' });
+const electron = spawn(require('electron'), ['.'], { stdio: 'inherit' });
+const stop = () => { watch.kill('SIGTERM'); electron.kill('SIGTERM'); };
+process.on('SIGINT', stop);
+process.on('SIGTERM', stop);
+electron.on('exit', code => { watch.kill('SIGTERM'); process.exitCode = code || 0; });
+watch.on('exit', () => electron.kill('SIGTERM'));
+for (const child of [watch, electron]) child.on('error', error => { console.error(error); stop(); process.exitCode = 1; });

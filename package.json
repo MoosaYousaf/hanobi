@@ -5,7 +5,7 @@
   "description": "A lightweight desktop harness for any LLM: subscriptions, API keys, local models, and MCP connectors. Runs on macOS 12+.",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "node scripts/build-speech.cjs && (vite build --watch & electron .)",
+    "dev": "node scripts/dev.cjs",
     "build": "node scripts/build-speech.cjs && vite build",
     "start": "npm run build && electron .",
     "test": "node --test test/*.test.js",
@@ -20,8 +20,8 @@
     "@vitejs/plugin-react": "6.1.2",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
-    "electron": "40.3.0",
-    "electron-builder": "26.0.12",
+    "electron": "43.8.9",
+    "electron-builder": "26.18.0",
     "lucide-react": "1.63.0",
     "mermaid": "12.2.0",
     "react": "19.3.1",
@@ -80,5 +80,8 @@
     "type": "git",
     "url": "https://github.com/MoosaYousaf/orin.git"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "overrides": {
+    "minimatch@>=7 <11": "11.0.8"
+  }
 }

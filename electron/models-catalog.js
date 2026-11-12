@@ -14,7 +14,8 @@ function shorten(data) {
   for (const id of PROVIDERS) {
     const models = data?.[id]?.models;
     if (!models) continue;
-    providers[id] = Object.values(models).map(m => ({ id: m.id, name: m.name || m.id, release: m.release_date || '', input: m.cost?.input ?? null, output: m.cost?.output ?? null, context: m.limit?.context ?? null }));
+    const number = n => Number.isFinite(n) && n >= 0 ? n : null;
+    providers[id] = Object.values(models).filter(m => m && typeof m.id === 'string' && m.id.length <= 200).slice(0, 10000).map(m => ({ id: m.id, name: typeof m.name === 'string' ? m.name.slice(0, 200) : m.id, release: typeof m.release_date === 'string' ? m.release_date.slice(0, 40) : '', input: number(m.cost?.input), output: number(m.cost?.output), context: number(m.limit?.context) }));
   }
   return providers;
 }
@@ -29,7 +30,7 @@ const isNew = (release, now = Date.now()) => !!release && now - Date.parse(relea
 // Claude Code accepts any Anthropic model id. The menu lists the newest model of each family (Opus, Sonnet, Haiku,
 // Fable…) and every model of the last 90 days, newest first, without dated snapshots (claude-…-20250101).
 function claudeModels(providers, now = Date.now()) {
-  const list = (providers?.anthropic || []).filter(m => /^claude-/.test(m.id) && !/-\d{8}$/.test(m.id) && !/latest/.test(m.id) && m.release && now - Date.parse(m.release) < 365 * DAY)
+  const list = (providers?.anthropic || []).filter(m => m && typeof m.name === 'string' && typeof m.release === 'string' && typeof m.id === 'string' && /^claude-/.test(m.id) && !/-\d{8}$/.test(m.id) && !/latest/.test(m.id) && m.release && now - Date.parse(m.release) < 365 * DAY)
     .sort((a, b) => b.release.localeCompare(a.release) || a.id.localeCompare(b.id));
   const families = new Set();
   return list.filter(m => {
@@ -43,7 +44,11 @@ function claudeModels(providers, now = Date.now()) {
 class ModelCatalog {
   constructor({ file, fetch = globalThis.fetch }) {
     Object.assign(this, { file, fetch });
-    try { this.data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { this.data = { at: 0, providers: {} }; }
+    try {
+      const loaded = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const providers = Object.fromEntries(PROVIDERS.map(id => [id, (Array.isArray(loaded?.providers?.[id]) ? loaded.providers[id] : []).filter(m => m && typeof m.id === 'string' && typeof m.name === 'string' && typeof m.release === 'string').map(m => ({ ...m, output: Number.isFinite(m.output) && m.output >= 0 ? m.output : null }))]));
+      this.data = { at: Number.isFinite(loaded?.at) ? loaded.at : 0, providers };
+    } catch { this.data = { at: 0, providers: {} }; }
   }
   fresh() { return Date.now() - (this.data.at || 0) < DAY; }
   // Keeps the last good catalog when the download fails.
@@ -51,7 +56,16 @@ class ModelCatalog {
     if (!force && this.fresh()) return this.data;
     const response = await this.fetch(URL, { headers: { 'User-Agent': 'Orin' }, signal: AbortSignal.timeout(30000) });
     if (!response.ok) throw new Error(`The model catalog is unavailable (HTTP ${response.status}).`);
-    this.data = { at: Date.now(), providers: shorten(await response.json()) };
+    let data;
+    if (response.body) {
+      let size = 0; const chunks = [];
+      for await (const chunk of response.body) {
+        size += chunk.length; if (size > 16 * 1024 * 1024) throw new Error('The model catalog exceeds 16 MB.');
+        chunks.push(Buffer.from(chunk));
+      }
+      data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    } else data = await response.json();
+    this.data = { at: Date.now(), providers: shorten(data) };
     fs.writeFileSync(this.file, JSON.stringify(this.data));
     return this.data;
   }

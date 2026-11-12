@@ -1,6 +1,6 @@
 # Orin
 
-Desktop harness for any LLM (CLI subscriptions, API keys, local models, MCP). Electron 40.3.0 (pinned for macOS 12) + React/Vite renderer. Read `docs/ARCHITECTURE.md` first.
+Desktop harness for any LLM (CLI subscriptions, API keys, local models, MCP). Electron 43.8.9 (pinned for macOS 12) + React/Vite renderer. Read `docs/ARCHITECTURE.md` first.
 
 ## Commands
 

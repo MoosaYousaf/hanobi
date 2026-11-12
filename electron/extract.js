@@ -71,8 +71,16 @@ async function xlsx(file, names) {
 }
 
 // Returns the text, or null when the type is not supported.
+async function readText(file, limit = 400000) {
+  const handle = await fs.open(file, 'r');
+  try {
+    const buffer = Buffer.alloc(limit * 4);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    return buffer.subarray(0, bytesRead).toString('utf8').slice(0, limit);
+  } finally { await handle.close(); }
+}
 async function extractText(file) {
-  if (TEXT.test(file)) return fs.readFile(file, 'utf8');
+  if (TEXT.test(file)) return readText(file);
   if (/\.pdf$/i.test(file)) return pdf(file);
   if (TEXTUTIL.test(file)) return run('textutil', ['-convert', 'txt', '-stdout', file]);
   if (OFFICE_ZIP.test(file)) {
@@ -87,11 +95,11 @@ const supported = file => TEXT.test(file) || /\.pdf$/i.test(file) || TEXTUTIL.te
 // Extracted text is kept in <folder>/.text/<name>.txt and made again when the document is newer.
 async function cachedText(folder, name) {
   const source = path.join(folder, name);
-  if (TEXT.test(name)) return fs.readFile(source, 'utf8');
+  if (TEXT.test(name)) return readText(source);
   if (!supported(name)) return null;
   const cache = path.join(folder, '.text', `${name}.txt`);
   const [src, out] = await Promise.all([fs.stat(source), fs.stat(cache).catch(() => null)]);
-  if (out && out.mtimeMs >= src.mtimeMs) return fs.readFile(cache, 'utf8');
+  if (out && out.mtimeMs >= src.mtimeMs) return readText(cache);
   const text = (await extractText(source)).trim();
   await fs.mkdir(path.dirname(cache), { recursive: true });
   await fs.writeFile(cache, text);

@@ -10,7 +10,7 @@ Orin is a lightweight desktop harness for the language models you use. One windo
 | API key | Calls the provider API. Keys are encrypted with the macOS Keychain. | Anthropic, OpenAI, Google Gemini, OpenRouter, DeepSeek, Mistral, Groq, xAI Grok, GitHub Models, any OpenAI-compatible URL |
 | Local | Calls a model server on this Mac. No key, no network. | Ollama, LM Studio |
 
-Orin runs on macOS 12 Monterey and later, including Intel Macs. It pins Electron 40.3.0 to keep macOS 12 support.
+Orin runs on macOS 12 Monterey and later, including Intel Macs. It pins Electron 43.8.9 to keep macOS 12 support.
 
 ## Features
 
@@ -23,7 +23,7 @@ Orin runs on macOS 12 Monterey and later, including Intel Macs. It pins Electron
 - Image attachments for API and local models.
 - Branching: start a new branch from any of your messages, then edit and send it again.
 - Rewind: return to before any of your messages. Rewind the conversation, the workspace files, or both. Before each turn in a Git workspace, Orin saves a checkpoint of every file that `.gitignore` does not exclude. It uses a private index, so your index, branches, and stash do not change. Git can delete checkpoints older than two weeks.
-- Suggested replies as chips above the message box, and inline completion while you type (Tab or → takes it). Claude Code makes one. Every model makes up to three when you turn on **Settings → General → Suggested replies** (one extra request per reply).
+- Suggested replies as chips above the message box, and inline completion while you type (Tab or → takes it). Up to three fit on a single line when you turn on **Settings → General → Suggested replies** (one short request per reply; Haiku on Claude connections). Copilot and local models skip suggestions.
 - Questions: the model can ask you multiple-choice questions during a turn. Claude Code (AskUserQuestion), Codex in **Ask first**, and API and local models (a `orin__ask_user` tool) support them.
 - Files in and out of conversations:
   - Attach any file with **+**, drag and drop, or paste. Orin copies it into the conversation. Text from PDF, Word, RTF, OpenDocument, PowerPoint, Excel, CSV, and text files goes to every model. API models get images as images. CLI agents also get each file's path.
@@ -61,7 +61,7 @@ npm run install:mac
 
 Voice input needs the Xcode Command Line Tools (`xcode-select --install`) to build its small Swift helper. Without them, everything else works.
 
-This builds Orin and puts it in `/Applications`. Open it from Spotlight, Launchpad, or the Dock like any other app. To update, run `git pull`, then `npm run install:mac` again. Your conversations and settings stay. The app is free and has no Apple developer signature, so macOS may ask once for Keychain access to Orin's saved keys. Click **Always Allow**.
+Finish active sessions and quit Orin first; the installer refuses to replace a running copy. This builds Orin and puts it in `/Applications`. Open it from Spotlight, Launchpad, or the Dock like any other app. To update, run `git pull`, then `npm run install:mac` again. Your conversations and settings stay. The app is free and has no Apple developer signature, so macOS may ask once for Keychain access to Orin's saved keys. Click **Always Allow**.
 
 For development, `npm start` runs Orin from the source folder with the same data.
 

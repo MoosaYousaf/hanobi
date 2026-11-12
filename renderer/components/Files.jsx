@@ -176,7 +176,7 @@ function MermaidPreview({ text }) {
         const mermaid = (await (mermaidLoad ||= import('mermaid'))).default;
         // Colors come from the app theme, so diagrams match every palette in light and dark.
         const css = getComputedStyle(document.documentElement), v = name => css.getPropertyValue(name).trim();
-        mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', darkMode: dark, fontFamily: getComputedStyle(document.body).fontFamily,
+        mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', suppressErrorRendering: true, theme: 'base', darkMode: dark, fontFamily: getComputedStyle(document.body).fontFamily,
           themeVariables: { background: v('--surface'), primaryColor: v('--raised'), primaryTextColor: v('--text'), primaryBorderColor: v('--border-strong'), secondaryColor: v('--user'), tertiaryColor: v('--surface'), lineColor: v('--text-3'), textColor: v('--text'), mainBkg: v('--raised'), nodeBorder: v('--border-strong'), clusterBkg: v('--surface'), edgeLabelBackground: v('--surface') } });
         const { svg } = await mermaid.render(`orin-mermaid-${++mermaidCount}`, text);
         if (live) { setSvg(svg); setError(''); }

@@ -92,7 +92,7 @@ function Approval({ request }) {
       <div className="approval-actions">
         <button className="btn" onClick={act('deny')}>Deny</button>
         <button className="btn" onClick={act('always')}>Always allow {request.tool} in this chat</button>
-        <button className="btn primary" onClick={act('allow')} autoFocus>Allow once</button>
+        <button className="btn primary" onClick={act('allow')}>Allow once</button>
       </div>
     </div>
   );

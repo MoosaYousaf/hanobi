@@ -131,6 +131,7 @@ export function completion(text, suggestions, messages) {
 
 // Text drafts survive switching between conversations.
 const drafts = new Map();
+const attachmentDrafts = new Map();
 // A mounted composer listens, so a draft set from outside (rewind, a suggestion) shows at once.
 export const getDraft = threadId => drafts.get(threadId) ?? '';
 export const setDraft = (threadId, text) => { drafts.set(threadId, text); window.dispatchEvent(new CustomEvent('orin-draft', { detail: threadId })); };
@@ -139,7 +140,8 @@ export function Composer({ thread, workspace, modelLabel }) {
   const running = useStore(s => !!s.live[thread.id]);
   const app = useStore(s => s.app);
   const [text, setText] = useState(() => drafts.get(thread.id) ?? '');
-  const [files, setFiles] = useState([]); // file parts already copied into the thread's folder
+  const [files, updateFiles] = useState(() => attachmentDrafts.get(thread.id) || []);
+  const setFiles = next => updateFiles(previous => { const value = typeof next === 'function' ? next(previous) : next; attachmentDrafts.set(thread.id, value); return value; }); // file parts already copied into the thread's folder
   const input = useRef(null);
   const connection = app.connections.find(c => c.id === thread.connectionId);
   const preset = connection && app.presets[connection.preset];
@@ -163,7 +165,7 @@ export function Composer({ thread, workspace, modelLabel }) {
   };
   // The ghost text: the first suggested reply shows in the empty box, and Tab takes it.
   const last = thread.messages.at(-1);
-  const suggestions = !running && last?.role === 'assistant' ? last.suggestions || [] : [];
+  const suggestions = !running && last?.role === 'assistant' ? (last.suggestions || []).slice(0, 3) : [];
   const ghost = !text ? suggestions[0] || '' : '';
   // While the user types, the rest of a matching suggestion or earlier message shows after the caret. Tab or → takes it.
   const [atEnd, setAtEnd] = useState(true);
@@ -202,7 +204,6 @@ export function Composer({ thread, workspace, modelLabel }) {
       toast('New conversation. The old one is in the sidebar.');
     }
     if (name === 'effort' && !(preset?.efforts?.length > 1)) throw new Error('This model has no effort levels.');
-    if (name === 'access' && chatCli) throw new Error('Chats and projects are read-only for CLI agents, so they have no access mode.');
     if (name === 'model' || name === 'effort' || name === 'access') signal(name);
     if (name === 'rename') { const title = args || await askText('Conversation name', thread.title); if (title) await call('thread:rename', thread.id, title); }
     if (name === 'attach') await pick();
@@ -242,7 +243,8 @@ export function Composer({ thread, workspace, modelLabel }) {
     if (running || (!text.trim() && !files.length)) return;
     const own = !files.length && builtin(text);
     if (own) { runBuiltin(own); return; }
-    await call('run:send', thread.id, { text, files: files.map(({ path, name }) => ({ path, name })) });
+    if (getState().voice.threadId === thread.id && getState().voice.state !== 'idle') await stopVoice({ finish: true });
+    await call('run:send', thread.id, { text: getDraft(thread.id), files: files.map(({ path, name }) => ({ path, name })) });
     update(''); setFiles([]);
   });
   const setting = patch => guard(() => call('thread:settings', thread.id, patch))();
@@ -255,9 +257,7 @@ export function Composer({ thread, workspace, modelLabel }) {
     <div className="composer-wrap">
       <CommandMenu open={menu} items={items} index={index} onPick={choose} onHover={setIndex} />
       {suggestions.length && !text && !menu ? (
-        <div className="suggestions" aria-label="Suggested replies">
-          {suggestions.map(s => <button key={s} className="suggestion" onClick={() => { update(s); input.current?.focus(); }}>{s}</button>)}
-        </div>
+        <SuggestionRow suggestions={suggestions} onPick={s => { update(s); input.current?.focus(); }} />
       ) : null}
       <div className="composer" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); attach(e.dataTransfer.files); }}>
         {files.length ? (
@@ -303,4 +303,30 @@ export function Composer({ thread, workspace, modelLabel }) {
       </div>
     </div>
   );
+}
+
+// Measure natural chip widths before paint and on pane resize. Hidden chips remain measurable.
+function SuggestionRow({ suggestions, onPick }) {
+  const row = useRef(null);
+  useLayoutEffect(() => {
+    const el = row.current;
+    const fit = () => {
+      let used = 0;
+      for (const chip of el.children) {
+        const width = chip.getBoundingClientRect().width;
+        const fits = used + width <= el.clientWidth;
+        chip.style.visibility = fits ? 'visible' : 'hidden';
+        chip.inert = !fits;
+        chip.setAttribute('aria-hidden', String(!fits));
+        used += width + 6;
+      }
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [suggestions.join('\0')]);
+  return <div ref={row} className="suggestions" aria-label="Suggested replies">
+    {suggestions.map(s => <button key={s} className="suggestion" onClick={() => onPick(s)}>{s}</button>)}
+  </div>;
 }

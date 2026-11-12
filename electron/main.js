@@ -3,6 +3,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const os = require('node:os');
+const { pathToFileURL } = require('node:url');
 const { Store } = require('./store');
 const { Secrets } = require('./secrets');
 const { Mcp } = require('./mcp');
@@ -123,7 +124,7 @@ function state() {
     voice: { language: store.data.preferences.voice?.language || 'en', available: speech.available() },
     local: { engine: engine.status(), downloads: downloads.list(), models: library.list() },
     desktop: { version: VERSION, packaged: app.isPackaged, openAtLogin: app.isPackaged && app.getLoginItemSettings().openAtLogin, shortcut: store.data.preferences.shortcut ?? desktop.DEFAULT_SHORTCUT, shortcutError, notify: store.data.preferences.notify !== false, update },
-    modes, mcpStatus: mcp.statuses(), running: Object.keys(runner.live()), warning: store.warning, secretsAvailable: secrets.available()
+    modes, mcpStatus: mcp.statuses(), running: Object.keys(runner.live()), warning: store.warning || secrets.warning, secretsAvailable: secrets.available()
   };
 }
 
@@ -162,12 +163,18 @@ function runHtml(html, title = 'Snippet') {
   html = String(html || '');
   if (Buffer.byteLength(html) > MAX_RUN) throw new Error('The snippet is too large to run (1.5 MB at most).');
   const ses = session.fromPartition('orin-run');
+  ses.webRequest.onBeforeRequest((details, callback) => {
+    const url = new URL(details.url);
+    const host = url.hostname.replace(/^\[|\]$/g, '');
+    const local = /^(localhost|.*\.localhost|127\..*|0\..*|10\..*|192\.168\..*|169\.254\..*|172\.(1[6-9]|2\d|3[01])\..*|::1|::|f[cd][0-9a-f:]*|fe[89ab][0-9a-f:]*)$/i.test(host);
+    callback({ cancel: local || !['https:', 'data:', 'blob:'].includes(url.protocol) });
+  });
   ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   ses.setPermissionCheckHandler(() => false);
   const win = new BrowserWindow({ width: 960, height: 720, title: `Run: ${String(title).slice(0, 80)}`, backgroundColor: nativeTheme.shouldUseDarkColors ? '#1f1f1e' : '#ffffff',
     webPreferences: { partition: 'orin-run', sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: true, webviewTag: false, spellcheck: false } });
-  win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:\/\//.test(url)) shell.openExternal(url); return { action: 'deny' }; });
-  win.webContents.on('will-navigate', (event, url) => { event.preventDefault(); if (/^https?:\/\//.test(url)) shell.openExternal(url); });
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', event => event.preventDefault());
   win.webContents.on('page-title-updated', event => event.preventDefault());
   win.loadURL(`data:text/html;charset=utf-8;base64,${Buffer.from(html).toString('base64')}`);
   return win;
@@ -177,11 +184,17 @@ function runHtml(html, title = 'Snippet') {
 async function printPdf(html) {
   const source = path.join(app.getPath('temp'), `orin-print-${crypto.randomUUID()}.html`);
   fs.writeFileSync(source, html);
-  const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false, contextIsolation: true } });
+  const partition = `orin-print-${crypto.randomUUID()}`;
+  const printSession = session.fromPartition(partition);
+  const sourceURL = pathToFileURL(source).href;
+  printSession.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !(details.url === sourceURL && details.resourceType === 'mainFrame') && !details.url.startsWith('data:') }));
+  const win = new BrowserWindow({ show: false, webPreferences: { partition, sandbox: true, javascript: false, contextIsolation: true, nodeIntegration: false } });
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', event => event.preventDefault());
   try {
     await win.loadFile(source);
     return await win.webContents.printToPDF({ printBackground: true, margins: { top: 0.6, bottom: 0.6, left: 0.6, right: 0.6 } });
-  } finally { win.destroy(); fs.rmSync(source, { force: true }); }
+  } finally { win.destroy(); printSession.webRequest.onBeforeRequest(null); fs.rmSync(source, { force: true }); }
 }
 
 // In full screen, Finder opens in another Space and the screen leaves Orin. A file sheet on Orin's window shows the
@@ -209,10 +222,12 @@ const handlers = {
     if (picked.canceled || !picked.filePaths[0]) return null;
     const workspace = store.addWorkspace(picked.filePaths[0]); changed(); return workspace;
   },
-  'workspace:remove': id => {
+  'workspace:remove': async id => {
     if (store.data.threads.some(t => t.workspaceId === id && runner.runs.has(t.id))) throw new Error('Stop running conversations first.');
     const workspace = store.workspace(id);
     if (workspace.kind === 'chats') throw new Error('The Chats list cannot be removed.');
+    const threadIds = store.data.threads.filter(t => t.workspaceId === id).map(t => t.id);
+    await Promise.all(threadIds.map(threadId => files.remove(threadId)));
     store.removeWorkspace(id);
     // A project folder belongs to Orin, so it goes with the project. A code folder stays on disk.
     if (workspace.kind === 'project' && fs.existsSync(projectsRoot()) && workspace.path.startsWith(fs.realpathSync(projectsRoot()) + path.sep)) fs.rmSync(workspace.path, { recursive: true, force: true });
@@ -226,7 +241,7 @@ const handlers = {
     projects.writeContext(project);
     changed(); return project;
   },
-  'project:update': (id, patch) => {
+  'project:update': (id, patch = {}) => {
     const project = projectById(id);
     if ('name' in patch) project.name = String(patch.name).trim().slice(0, 80) || project.name;
     if ('instructions' in patch) project.instructions = String(patch.instructions).slice(0, 50000);
@@ -312,7 +327,7 @@ const handlers = {
     store.upsert('mcpServers', record);
     const previous = secrets.get(`mcp:${record.id}`) || {};
     // Blank values keep the stored secret, so editing never shows or needs the old value.
-    const merge = (incoming = {}, stored = {}) => Object.fromEntries(Object.entries(incoming).filter(([k]) => k.trim()).map(([k, v]) => [k.trim(), v === '' ? stored[k] ?? '' : String(v)]));
+    const merge = (incoming = {}, stored = {}) => Object.fromEntries(Object.entries(incoming).filter(([k]) => k.trim()).map(([k, v]) => [k.trim(), v === '' ? stored[k.trim()] ?? '' : String(v)]));
     secrets.set(`mcp:${record.id}`, { env: merge(input.env, previous.env), headers: merge(input.headers, previous.headers) });
     await mcp.disconnect(record.id);
     changed(); return record.id;
@@ -386,7 +401,11 @@ const handlers = {
     const full = await threadFile(threadId, file);
     activeWindow()?.previewFile(full, path.basename(full));
   },
-  'files:open': async (threadId, file) => { const error = await shell.openPath(await threadFile(threadId, file)); if (error) throw new Error(error); },
+  'files:open': async (threadId, file) => {
+    const full = await threadFile(threadId, file);
+    if (/\.(command|terminal|fileloc|inetloc|app|workflow|scpt|sh|bash|zsh|py|rb|pl|js|mjs|cjs)$/i.test(full) || (fs.statSync(full).mode & 0o111)) return shell.showItemInFolder(full);
+    const error = await shell.openPath(full); if (error) throw new Error(error);
+  },
   'files:reveal': async (threadId, file) => reveal(await threadFile(threadId, file), { file: true }),
   'files:save-copy': async (threadId, file) => {
     const full = await threadFile(threadId, file);
@@ -440,8 +459,9 @@ app.whenReady().then(() => {
   mcp = new Mcp({ store, secrets, openExternal: url => shell.openExternal(url), onChange: changed });
   files = new Files(path.join(app.getPath('userData'), 'Files'), { printPdf });
   speech = new Speech({ helper: process.env.ORIN_SPEECH_HELPER || (app.isPackaged ? path.join(process.resourcesPath, 'orin-speech') : path.join(__dirname, '../dist/native/orin-speech')), onEvent: event => send('voice', event) });
-  // Earlier versions kept Whisper models here for voice input; Apple speech recognition needs none.
-  fs.rm(path.join(app.getPath('userData'), 'Models'), { recursive: true, force: true }, () => {});
+  // Earlier versions kept Whisper models in Models/onnx-community for voice input; Apple speech recognition needs none.
+  // Only that folder goes: local models live next to it in Models/<owner>__<repo>.
+  fs.rm(path.join(app.getPath('userData'), 'Models', 'onnx-community'), { recursive: true, force: true }, () => {});
   // Pages get no device permissions: the speech helper records the microphone, not the renderer.
   session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
@@ -473,24 +493,32 @@ app.whenReady().then(() => {
   fs.mkdirSync(general, { recursive: true });
   const chats = store.addWorkspace(general, 'Chats', { kind: 'chats' });
   if (chats.kind !== 'chats') { chats.kind = 'chats'; store.save(); }
-  for (const [name, fn] of Object.entries(handlers)) ipcMain.handle(name, (_event, ...args) => fn(...args));
+  const assertSender = event => {
+    const frame = event.senderFrame;
+    const expected = !app.isPackaged && process.env.VITE_DEV_SERVER_URL || pathToFileURL(path.join(__dirname, '../dist/renderer/index.html')).href;
+    if (![...windows].some(w => !w.isDestroyed() && w.webContents === event.sender) || frame !== event.sender.mainFrame || frame.url.split('#')[0] !== expected) throw new Error('Untrusted IPC sender.');
+  };
+  for (const [name, fn] of Object.entries(handlers)) ipcMain.handle(name, (event, ...args) => { assertSender(event); return fn(...args); });
   // The terminal talks only to the window that opened it. A window has one tmux client: a new one (after a reload)
   // ends the old one, and a closed window ends its client.
   terminal = new Terminal();
   const clients = new Map(); // webContents id -> client id
-  ipcMain.handle('terminal:status', () => terminal.status());
+  ipcMain.handle('terminal:status', event => { assertSender(event); return terminal.status(); });
   ipcMain.handle('terminal:open', (event, options) => {
+    assertSender(event);
     const sender = event.sender;
     if (clients.has(sender.id)) terminal.close(clients.get(sender.id));
-    else sender.once('destroyed', () => { terminal.close(clients.get(sender.id)); clients.delete(sender.id); });
+    const first = !clients.has(sender.id);
     const workspace = store.data.workspaces.find(w => w.id === options?.workspaceId && w.kind === 'code');
     const id = terminal.open({ cwd: workspace?.path, cols: options?.cols, rows: options?.rows }, value => { if (!sender.isDestroyed()) sender.send('terminal', value); });
+    if (first) sender.once('destroyed', () => { terminal.close(clients.get(sender.id)); clients.delete(sender.id); });
     clients.set(sender.id, id);
     return id;
   });
-  ipcMain.handle('terminal:write', (_event, id, data) => terminal.write(id, data));
-  ipcMain.handle('terminal:resize', (_event, id, cols, rows) => terminal.resize(id, cols, rows));
-  ipcMain.handle('terminal:close', (_event, id) => terminal.close(id));
+  const ownClient = (event, id) => { assertSender(event); if (clients.get(event.sender.id) !== id) throw new Error('This terminal belongs to another window.'); };
+  ipcMain.handle('terminal:write', (event, id, data) => { ownClient(event, id); return terminal.write(id, data); });
+  ipcMain.handle('terminal:resize', (event, id, cols, rows) => { ownClient(event, id); return terminal.resize(id, cols, rows); });
+  ipcMain.handle('terminal:close', (event, id) => { ownClient(event, id); return terminal.close(id); });
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: 'Orin', submenu: [{ role: 'about' }, { type: 'separator' }, { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => send('menu', 'settings') }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { type: 'separator' }, { role: 'quit' }] },
     { label: 'File', submenu: [{ label: 'New Conversation', accelerator: 'CmdOrCtrl+N', click: () => send('menu', 'new-thread') }, { label: 'New Window', accelerator: 'CmdOrCtrl+Shift+N', click: createWindow }, { type: 'separator' }, { role: 'close' }] },

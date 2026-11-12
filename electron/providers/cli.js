@@ -31,17 +31,17 @@ function claudeMcpConfig(servers) {
     if (s.transport === 'stdio') mcpServers[s.name] = { command: s.command, args: s.args || [], env: s.env || {} };
     else if (!s.oauth) mcpServers[s.name] = { type: 'http', url: s.url, headers: s.headers || {} };
   }
-  return Object.keys(mcpServers).length ? ['--mcp-config', JSON.stringify({ mcpServers })] : [];
+  return { mcpServers };
 }
 
 // The prompt always goes through stdin, so prompt text can never be parsed as a CLI option.
-function command(cli, { sessionId, model = '', effort = '', mode = 'auto', mcpServers = [] }) {
+function command(cli, { sessionId, model = '', effort = '', mode = 'auto', mcpConfig }) {
   const modelArgs = model ? ['--model', model] : [];
   if (cli === 'claude') {
     // The prompt goes to stdin as a stream-json message, and permission prompts and questions come back as control requests.
     // In "ask" Orin shows the permission prompts; in the other modes it denies them, as the CLI does without a person.
-    const permission = { ask: [], default: [], read: ['--permission-mode', 'plan'], auto: ['--permission-mode', 'acceptEdits'], full: ['--permission-mode', 'bypassPermissions'] }[mode];
-    return ['-p', '--input-format', 'stream-json', '--permission-prompt-tool', 'stdio', '--output-format', 'stream-json', '--include-partial-messages', '--verbose', '--prompt-suggestions', ...permission, ...modelArgs, ...(effort ? ['--effort', effort] : []), ...(sessionId ? ['--resume', sessionId] : []), ...claudeMcpConfig(mcpServers)];
+    const permission = { ask: ['--permission-mode', 'default'], default: ['--permission-mode', 'default'], read: ['--permission-mode', 'plan'], auto: ['--permission-mode', 'acceptEdits'], full: ['--permission-mode', 'bypassPermissions'] }[mode];
+    return ['-p', '--input-format', 'stream-json', '--permission-prompt-tool', 'stdio', '--output-format', 'stream-json', '--include-partial-messages', '--verbose', ...permission, ...modelArgs, ...(effort ? ['--effort', effort] : []), ...(sessionId ? ['--resume', sessionId] : []), ...(mcpConfig ? ['--mcp-config', mcpConfig] : [])];
   }
   if (cli === 'codex') {
     const access = { default: [], read: ['--sandbox', 'read-only', '-c', 'approval_policy="never"'], auto: ['--sandbox', 'workspace-write', '-c', 'approval_policy="never"'], full: ['--dangerously-bypass-approvals-and-sandbox'] }[mode];
@@ -137,8 +137,6 @@ async function run(options) {
 // How long a turn waits for the output pipes after the CLI exits, and for the CLI to exit after its result.
 const EXIT_GRACE_MS = 400;
 const RESULT_GRACE_MS = 3000;
-// Claude Code makes its suggested next prompt after the result and waits up to 30 s for it before it exits.
-const LATE_MS = 35000;
 
 function runTurn({ preset, thread, history, prompt, cwd, mcpServers, draft, signal, onSession, approve, question, onSuggestion }) {
   const executable = cliPath(preset.cli);
@@ -146,14 +144,22 @@ function runTurn({ preset, thread, history, prompt, cwd, mcpServers, draft, sign
   let resume = thread.replay ? null : thread.sessionId;
   const input = thread.replay || (!thread.sessionId && history.length) ? replayPrompt(history, prompt) : prompt;
   const env = { ...process.env, PATH: searchPath().join(path.delimiter), NO_COLOR: '1', COPILOT_AUTO_UPDATE: 'false' };
-  // Without this, Claude Code skips suggestions behind a server flag, near plan limits, and after many unused ones.
-  // Each Orin turn is a new process, so Claude Code never sees that a suggestion was used.
-  if (preset.cli === 'claude') env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION = '1';
+  // Suggestions are a separate, optional Haiku request with a short context.
   if (preset.cli === 'codex' && thread.mode === 'ask') return codexServer.run({ executable, env, cwd, input, resume, model: thread.model, effort: thread.effort, draft, signal, onSession, approve, question });
   if (preset.cli === 'copilot' && thread.mode === 'ask') return copilotAcp.run({ executable, env, cwd, input, resume, model: thread.model, effort: thread.effort, draft, signal, onSession, approve });
   if (preset.cli === 'copilot' && !resume) { resume = crypto.randomUUID(); onSession(resume); }
-  const args = command(preset.cli, { ...thread, sessionId: resume, mcpServers: preset.cli === 'claude' ? mcpServers : [] });
-  const child = spawn(executable, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
+  let configDir, mcpConfig;
+  if (preset.cli === 'claude' && mcpServers?.length) {
+    configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orin-mcp-'));
+    mcpConfig = path.join(configDir, 'config.json');
+    fs.writeFileSync(mcpConfig, JSON.stringify(claudeMcpConfig(mcpServers)), { mode: 0o600 });
+  }
+  const args = command(preset.cli, { ...thread, sessionId: resume, mcpConfig });
+  let child;
+  try { child = track(spawn(executable, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })); }
+  catch (error) { if (configDir) fs.rmSync(configDir, { recursive: true, force: true }); throw error; }
+  const cleanupConfig = () => { if (configDir) fs.rmSync(configDir, { recursive: true, force: true }); };
+  child.once('close', cleanupConfig); child.once('error', cleanupConfig);
   // Claude Code keeps stdin open for approval and question answers until the turn's result arrives.
   const asks = preset.cli === 'claude';
   child.stdin.on('error', () => {});
@@ -197,7 +203,7 @@ function runTurn({ preset, thread, history, prompt, cwd, mcpServers, draft, sign
   const handle = line => {
     if (!line.trim()) return;
     let event;
-    try { event = JSON.parse(line); } catch { draft.write('text', line + '\n'); return; }
+    try { event = JSON.parse(line); } catch { if (!signal.aborted) draft.write('text', line + '\n'); return; }
     if (event.type === 'control_request' || event.type === 'control_cancel_request') { control(event); return; }
     if (asks && event.type === 'result') child.stdin.end();
     if (event.type === 'result') ended();
@@ -212,8 +218,13 @@ function runTurn({ preset, thread, history, prompt, cwd, mcpServers, draft, sign
   });
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-16000); });
-  const stop = () => child.kill('SIGTERM');
+  const stop = () => {
+    child.kill('SIGTERM');
+    const kill = setTimeout(() => child.kill('SIGKILL'), 1500);
+    kill.unref(); child.once('exit', () => clearTimeout(kill));
+  };
   signal.addEventListener('abort', stop, { once: true });
+  if (signal.aborted) stop();
   // 'close' waits for every holder of the output pipes. A background process that the agent started (a dev server,
   // `npm start`) inherits them, so the turn also ends shortly after the CLI exits, or a little after its result
   // event when the CLI stays open for its own background work. Orin leaves such processes running.
@@ -227,26 +238,17 @@ function runTurn({ preset, thread, history, prompt, cwd, mcpServers, draft, sign
       handle(pending); pending = '';
       child.stdout.removeAllListeners('data'); child.stderr.removeAllListeners('data');
       child.stderr.destroy(); child.unref();
-      // The turn ended at its result, but the CLI still runs: its suggestion can come late.
-      if (onSuggestion && exitCode === null && !signal.aborted) late(); else child.stdout.destroy();
+      for (const cancel of asking.values()) cancel();
+      asking.clear();
+      child.stdout.destroy();
+      if (exitCode === null) stop();
+      cleanupConfig();
       if (signal.aborted) resolve({ stopped: true });
       else if (failure) reject(failure);
       else if (code === 0) resolve({});
       else reject(new Error(stderr.trim() || `${preset.name} exited with ${killedBy || `code ${code}`}.`));
     };
     let exitCode = null;
-    const late = () => {
-      let rest = '';
-      const stop = setTimeout(() => child.stdout.destroy(), LATE_MS);
-      child.stdout.on('data', chunk => {
-        const lines = (rest + chunk).split('\n');
-        rest = lines.pop();
-        for (const line of lines) {
-          try { const event = JSON.parse(line); if (event.type === 'prompt_suggestion' && event.suggestion?.trim()) onSuggestion(event.suggestion.trim()); } catch {}
-        }
-      });
-      child.stdout.on('close', () => clearTimeout(stop));
-    };
     ended = () => { if (!timer) timer = setTimeout(() => finish(0), RESULT_GRACE_MS); };
     child.on('error', reject);
     child.on('exit', (code, killedBy) => { exitCode = code ?? killedBy; clearTimeout(timer); timer = setTimeout(() => finish(code, killedBy), EXIT_GRACE_MS); });
@@ -260,15 +262,15 @@ function runTurn({ preset, thread, history, prompt, cwd, mcpServers, draft, sign
 // --strict-mcp-config loads none.
 function completeArgs(cli, model) {
   if (cli === 'codex') return ['exec', '--json', '--skip-git-repo-check', '--ephemeral', '--sandbox', 'read-only', '-c', 'approval_policy="never"', '-c', 'model_reasoning_effort="low"', ...(model ? ['--model', model] : []), '-'];
-  if (cli === 'claude') return ['-p', '--output-format', 'stream-json', '--verbose', '--tools', '', '--strict-mcp-config', '--no-session-persistence', ...(model ? ['--model', model] : [])];
-  return command(cli, { model, effort: 'low', mode: 'read', sessionId: crypto.randomUUID() });
+  if (cli === 'claude') return ['-p', '--output-format', 'stream-json', '--verbose', '--tools', '', '--strict-mcp-config', '--setting-sources', '', '--system-prompt', 'Return only the requested short answer.', '--no-session-persistence', ...(model ? ['--model', model] : [])];
+  return command(cli, { model, effort: 'low', mode: 'read', sessionId: cli === 'copilot' ? crypto.randomUUID() : undefined });
 }
 function complete({ preset, model = '', prompt, signal }) {
   const executable = cliPath(preset.cli);
   if (!executable) return Promise.reject(new Error(`${preset.name} is not installed.`));
   const draft = new Draft();
   const env = { ...process.env, PATH: searchPath().join(path.delimiter), NO_COLOR: '1', COPILOT_AUTO_UPDATE: 'false' };
-  const child = spawn(executable, completeArgs(preset.cli, model), { cwd: os.tmpdir(), env, stdio: ['pipe', 'pipe', 'ignore'], signal });
+  const child = track(spawn(executable, completeArgs(preset.cli, model), { cwd: os.tmpdir(), env, stdio: ['pipe', 'pipe', 'ignore'], signal }));
   child.stdin.on('error', () => {});
   child.stdin.end(prompt);
   let pending = '';
@@ -288,4 +290,8 @@ function complete({ preset, model = '', prompt, signal }) {
   });
 }
 
-module.exports = { searchPath, cliPath, command, apply, run, complete, completeArgs };
+const children = new Set();
+function track(child) { children.add(child); child.once('exit', () => children.delete(child)); child.once('error', () => children.delete(child)); return child; }
+function closeAll() { for (const child of children) child.kill('SIGKILL'); children.clear(); }
+
+module.exports = { closeAll, claudeMcpConfig, searchPath, cliPath, command, apply, run, complete, completeArgs };

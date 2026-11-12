@@ -55,8 +55,9 @@ test('CLI prompts never enter argv, so a prompt cannot act as an option', () => 
   assert.deepEqual(command('codex', { sessionId: 's', model: 'gpt-6.1-sol', effort: 'high', mode: 'auto' }),
     ['exec', '--json', '--skip-git-repo-check', '--sandbox', 'workspace-write', '-c', 'approval_policy="never"', '--model', 'gpt-6.1-sol', '-c', 'model_reasoning_effort="high"', 'resume', 's', '-']);
   assert.ok(command('claude', { mode: 'full' }).includes('bypassPermissions'));
-  const mcp = command('claude', { mode: 'auto', mcpServers: [{ name: 'fs', transport: 'stdio', command: 'npx', args: ['x'] }, { name: 'notion', transport: 'http', url: 'https://x', oauth: true }] });
-  assert.deepEqual(Object.keys(JSON.parse(mcp[mcp.indexOf('--mcp-config') + 1]).mcpServers), ['fs']);
+  const mcp = command('claude', { mode: 'auto', mcpConfig: '/tmp/private-config.json' });
+  assert.equal(mcp[mcp.indexOf('--mcp-config') + 1], '/tmp/private-config.json');
+  assert.deepEqual(Object.keys(cli.claudeMcpConfig([{ name: 'fs', transport: 'stdio', command: 'npx', args: ['x'] }, { name: 'notion', transport: 'http', url: 'https://x', oauth: true }]).mcpServers), ['fs']);
 });
 
 test('GitHub Copilot: chosen session id, streamed text, reasoning, and tool results', () => {
@@ -99,7 +100,7 @@ test('Claude Code stream: deltas, tool calls, and tool results', () => {
   assert.throws(() => apply('claude', { type: 'result', is_error: true, result: 'Credit balance too low' }, new Draft()), /Credit balance/);
   apply('claude', { type: 'prompt_suggestion', suggestion: 'Run the tests ', session_id: 'abc' }, draft);
   assert.deepEqual(draft.suggestions, ['Run the tests']);
-  assert.ok(command('claude', { mode: 'auto' }).includes('--prompt-suggestions'));
+  assert.ok(!command('claude', { mode: 'auto' }).includes('--prompt-suggestions'));
 });
 
 test('Claude Code ask mode: the prompt is a stdin message, and approval prompts come back as control requests', async () => {
@@ -145,13 +146,13 @@ test('Claude Code ask mode: the prompt is a stdin message, and approval prompts 
     }
     // A suggestion that comes after the turn ended still reaches the caller.
     draft = new Draft();
-    let late;
-    const suggested = new Promise(resolve => { late = resolve; });
+    const suggestions = [];
     const started = Date.now();
-    await cli.run({ ...base, thread: { mode: 'auto', model: '', effort: '' }, prompt: 'suggest', draft, question() {}, onSuggestion: late });
+    await cli.run({ ...base, thread: { mode: 'auto', model: '', effort: '' }, prompt: 'suggest', draft, question() {}, onSuggestion: suggestion => suggestions.push(suggestion) });
     assert.ok(Date.now() - started < 3500, 'the turn ends before the suggestion');
     assert.deepEqual(draft.suggestions, []);
-    assert.equal(await suggested, 'Run the tests');
+    assert.deepEqual(suggestions, [], 'native suggestions are disabled; the optional Haiku helper owns suggestions');
+    cli.closeAll();
   } finally { process.env.HOME = savedHome; cli.cliPath('claude', true); }
 });
 
@@ -408,4 +409,20 @@ test('context usage: Claude Code stream, Codex rollout file, Copilot session log
   assert.equal(usage.contextWindow('claude-haiku-4-5'), 200000);
   assert.equal(usage.contextWindow('claude-sonnet-5-5'), 1000000);
   assert.equal(usage.contextWindow('gpt-6-luna'), null);
+});
+
+test('git: a repository config cannot run a command through core.fsmonitor', async () => {
+  const git = require('../electron/git');
+  const { execFileSync } = require('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orin-fsmonitor-'));
+  const marker = path.join(dir, 'ran');
+  try {
+    execFileSync('git', ['init', '-q'], { cwd: dir });
+    execFileSync('git', ['config', 'core.fsmonitor', `touch '${marker}'`], { cwd: dir });
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'a');
+    const result = await git.status(dir);
+    assert.equal(result.error, undefined);
+    await git.snapshot(dir);
+    assert.equal(fs.existsSync(marker), false);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

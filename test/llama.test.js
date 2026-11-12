@@ -24,7 +24,7 @@ function sourceFetch() {
     urls.push(String(url));
     return new Response(bytes, { headers: { 'content-length': String(bytes.length) } });
   };
-  return { fetch, urls };
+  return { fetch, urls, sha256: require('node:crypto').createHash('sha256').update(bytes).digest('hex') };
 }
 function setup(extra = {}) {
   const dir = tmp('orin-engine-'), root = tmp('orin-lib-');
@@ -99,7 +99,9 @@ test('engine: use() loads one model at a time, keeps the server while a reply ru
   engine.info = { tag: 'b1' };
   try {
     const notes = [];
-    const url = await engine.use(model, { onStatus: s => notes.push(s) });
+    const [url, shared] = await Promise.all([engine.use(model, { onStatus: s => notes.push(s) }), engine.use(model)]);
+    assert.equal(shared, url, 'concurrent starts share one server');
+    engine.done();
     assert.match(url, /^http:\/\/127\.0\.0\.1:\d+\/v1$/);
     assert.match(notes[0], /Loading tiny-Q4_K_M\.gguf/);
     const reply = await (await fetch(`${url}/chat/completions`, { method: 'POST', body: JSON.stringify({ model, stream: true, messages: [] }) })).text();

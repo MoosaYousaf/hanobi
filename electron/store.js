@@ -2,6 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
+const { writeJson } = require('./atomic');
+
 const VERSION = 2;
 const empty = () => ({ version: VERSION, workspaces: [], threads: [], connections: [], mcpServers: [], modelCache: {}, preferences: { theme: 'dark', overseer: { router: 'model', allowPaid: false, exclude: [], include: [] }, suggestReplies: false, systemPrompt: '', lastModel: null, voice: { model: '', language: 'en' } } });
 
@@ -35,15 +37,14 @@ class Store {
   // Writes are coalesced; flush() runs synchronously at quit.
   save() {
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => this.flush(), 300);
+    this.timer = setTimeout(() => {
+      try { this.flush(); } catch (error) { this.warning = `Could not save conversations: ${error.message}`; console.error(this.warning); }
+    }, 300);
   }
   flush() {
     clearTimeout(this.timer);
     this.timer = null;
-    fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    const temp = `${this.file}.${process.pid}.tmp`;
-    fs.writeFileSync(temp, JSON.stringify(this.data), { mode: 0o600 });
-    fs.renameSync(temp, this.file);
+    writeJson(this.file, this.data);
   }
   // Thread list without message bodies; the renderer loads one thread at a time.
   summary() {

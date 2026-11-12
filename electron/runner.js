@@ -259,11 +259,11 @@ class Runner {
       else finish({ parts: draft.final(), error: error.message || String(error) });
     }
   }
-  // One extra request to the same model; CLIs run once without a session or tools. A failure only means no suggestions.
+  // One extra request (Haiku on Claude, else the same model); CLIs run once without a session or tools. A failure only means no suggestions.
   async suggestReplies(threadId, connection, preset, reply) {
     const thread = this.store.thread(threadId);
     const user = thread.messages.findLast(m => m.role === 'user');
-    const request = { apiKey: this.secrets.get(`key:${connection.id}`), model: thread.model, prompt: suggest.prompt(user, reply), signal: AbortSignal.timeout(preset.kind === 'cli' ? 90000 : 30000) };
+    const request = { apiKey: this.secrets.get(`key:${connection.id}`), model: suggest.model(preset, thread.model), prompt: suggest.prompt(user, reply), signal: AbortSignal.timeout(preset.kind === 'cli' ? 90000 : 30000) };
     const text = preset.kind === 'cli' ? await cli.complete({ preset, ...request })
       : preset.kind === 'anthropic' ? await anthropic.complete(request) : await openai.complete({ ...request, baseURL: connection.baseURL || preset.baseURL });
     this.addSuggestions(threadId, reply.id, suggest.parse(text));
